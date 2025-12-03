@@ -99,6 +99,13 @@
   // Modal Management
   // ============================================================================
 
+  // HTML escape function to prevent HTML interpretation in preview boxes
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
   function updateButtonText(format) {
     const modalButton = document.querySelector('#modalDownload');
     if (!modalButton) return;
@@ -116,17 +123,17 @@
     const modal = document.createElement('div');
     modal.id = 'formatSelectionModal';
     
-    // Generate JSON preview (first 500 chars)
-    const jsonPreview = transcriptData ? JSON.stringify(JSON.parse(transcriptData), null, 2).substring(0, 500) + '...' : 'Loading preview...';
+    // Generate JSON preview (first 500 chars) - escape HTML
+    const jsonPreview = transcriptData ? escapeHtml(JSON.stringify(JSON.parse(transcriptData), null, 2).substring(0, 500) + '...') : 'Loading preview...';
     
-    // Generate preview for VTT (first 500 chars)
-    const vttPreview = vttData ? vttData.substring(0, 500) + '...' : 'Loading preview...';
+    // Generate preview for VTT (first 500 chars) - escape HTML to show <v Speaker> tags
+    const vttPreview = vttData ? escapeHtml(vttData.substring(0, 500) + '...') : 'Loading preview...';
     
-    // Generate preview for grouped format
+    // Generate preview for grouped format - escape HTML
     let groupedPreview = 'Loading preview...';
     if (transcriptData) {
       const grouped = convertJSONToGrouped(transcriptData);
-      groupedPreview = grouped.substring(0, 500) + '...';
+      groupedPreview = escapeHtml(grouped.substring(0, 500) + '...');
     }
     
     // Get auto-detected filename
