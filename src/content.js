@@ -251,7 +251,6 @@
           background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
           color: white !important;
           border: none !important;
-          box-shadow: 0 4px 6px rgba(102, 126, 234, 0.4) !important;
           transition: background 0.3s ease !important;
           cursor: pointer !important;
         }
