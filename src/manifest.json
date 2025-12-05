@@ -1,18 +1,16 @@
 {
   "manifest_version": 3,
-  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAp/JjcW04/Voqgi7BYitjY+s+gaN+1vLXRaW0jDbMofm0OOkZxqLJoV/gEnOzRukiKZ6n5BjQipY/h1xUXps7wwSBy1DJbdcuTTZrlmEggI34jnPkSXr0M/oPacH4EzlYHy2WC2Q7dqx2Okp8IQcx1UoDaG9n8+aPghx5moV5rNc0b83qBaVmsIHZSOFXINy20XBDFhoW2e/cM7OaHf+tTgYtxNauRi5XHM62Dflj53oBRbkZa/s51MIEMG+Sa+6YbbSnYd2N7wYE4R75lOUMQwl2SzhSGX9ToK8RuZq+LE44qRMO9KTc1mXvwwZWuu1JUBFSlqmg7AM8VbBRUWrxswIDAQAB",
   "name": "MS Teams Transcript Downloader",
   "short_name": "Teams Transcripts",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Download MS Teams meeting transcripts in multiple formats (JSON, VTT, Grouped), even when download is disabled.",
   "author": "Brendan Gooden",
   "homepage_url": "https://github.com/brendangooden/ms-teams-transcript-downloader",
   "permissions": [
-    "storage",
-    "scripting"
+    "storage"
   ],
   "host_permissions": [
-    "https://*.sharepoint.com/personal/*/stream.aspx*",
+    "https://*.sharepoint.com/*",
     "https://teams.microsoft.com/*"
   ],
   "background": {
@@ -21,7 +19,7 @@
   "content_scripts": [
     {
       "matches": [
-        "https://*.sharepoint.com/personal/*/stream.aspx*",
+        "https://*.sharepoint.com/*",
         "https://teams.microsoft.com/*"
       ],
       "js": ["intercept.js", "content.js"],
@@ -32,7 +30,7 @@
     },
     {
       "matches": [
-        "https://*.sharepoint.com/personal/*/stream.aspx*",
+        "https://*.sharepoint.com/*",
         "https://teams.microsoft.com/*"
       ],
       "js": ["content.js"],
@@ -54,7 +52,7 @@
     {
       "resources": ["intercept.js"],
       "matches": [
-        "https://*.sharepoint.com/personal/*/stream.aspx*",
+        "https://*.sharepoint.com/*",
         "https://teams.microsoft.com/*"
       ]
     }

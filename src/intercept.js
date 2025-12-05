@@ -7,7 +7,10 @@
     const url = args[0];
     
     // Check if this is the media API metadata call (not the actual VTT content)
-    if (url && url.includes('_api/v2.1/drives') && 
+    // Only intercept URLs from my-*.sharepoint.com/personal/* to avoid interfering with other SharePoint sites
+    if (url && typeof url === 'string' && 
+        /https:\/\/[^\/]*-my\.sharepoint\.com\/personal\//.test(url) &&
+        url.includes('_api/v2.1/drives') && 
         url.includes('items/') && 
         url.includes('media') && 
         url.includes('transcripts') &&
