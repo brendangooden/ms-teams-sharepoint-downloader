@@ -43,6 +43,12 @@ The extension overrides the existing "Download Transcript" button.
    - You should see "MS Teams Transcript Downloader" in your extensions list
    - The extension icon should appear in your Chrome toolbar
 
+### Method 2: Install from Chrome Webstore
+
+1. **Open Extension Page**: 
+   - Navigate to https://chromewebstore.google.com/detail/ms-teams-transcript-downl/hmljlkhcebhkkhbbafiheolbneecoinp 
+   - Click on `Add to Chrome`
+
 ## Usage
 
 1. **Navigate to a Teams Meeting Recording**:
