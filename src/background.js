@@ -5,6 +5,7 @@ console.log('[MS Teams Transcript Downloader] Background script loaded');
 
 let transcriptUrl = null;
 let temporaryDownloadUrl = null;
+let videoManifestUrl = null;
 
 // Handle messages from content script
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -20,9 +21,17 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
+  if (request.action === 'setVideoManifestUrl') {
+    videoManifestUrl = request.manifestUrl;
+    console.log('[Transcript Downloader] Stored video manifest URL:', videoManifestUrl);
+    sendResponse({ success: true });
+    return true;
+  }
+
   if (request.action === 'getStatus') {
     sendResponse({
-      hasTranscriptUrl: !!transcriptUrl
+      hasTranscriptUrl: !!transcriptUrl,
+      hasVideoManifestUrl: !!videoManifestUrl
     });
     return true;
   }

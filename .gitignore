@@ -1,2 +1,3 @@
 *.pem
 *.zip
+.claude/settings.local.json

@@ -22,7 +22,7 @@
   padding: 24px;
   max-width: 1200px;
   width: 95%;
-  max-height: 80vh;
+  max-height: 85vh;
   overflow-y: auto;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
 }
@@ -255,5 +255,192 @@
   margin-top: 6px;
   font-size: 12px;
   color: #666;
+}
+
+/* ============================================================================
+   Video Download Modal Styles
+   ============================================================================ */
+
+#videoDownloadModal {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.7);
+  z-index: 999999;
+  justify-content: center;
+  align-items: center;
+}
+
+#videoDownloadModal.show {
+  display: flex;
+}
+
+.video-modal-content {
+  max-width: 800px;
+}
+
+.video-info-warning {
+  background: #fff8e1;
+  border: 1px solid #ffe082;
+  border-left: 4px solid #ffa000;
+  border-radius: 6px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  color: #5d4037;
+  line-height: 1.5;
+}
+
+.video-info-warning strong {
+  color: #e65100;
+}
+
+.video-tool-toggle {
+  display: flex;
+  gap: 0;
+  margin-bottom: 16px;
+  border: 2px solid #ddd;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.tool-toggle-btn {
+  flex: 1;
+  padding: 10px 16px;
+  border: none;
+  background: #f5f5f5;
+  color: #666;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: center;
+}
+
+.tool-toggle-btn:first-child {
+  border-right: 1px solid #ddd;
+}
+
+.tool-toggle-btn.active {
+  background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+  color: white;
+}
+
+.tool-toggle-btn:not(.active):hover {
+  background: #eee;
+}
+
+.tool-hint {
+  font-weight: 400;
+  font-size: 11px;
+  opacity: 0.8;
+}
+
+.video-format-cards {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.video-format-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  border: 2px solid #ddd;
+  border-radius: 8px;
+  padding: 12px 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex: 1 1 0;
+  min-width: 100px;
+  text-align: center;
+}
+
+.video-format-card:hover {
+  border-color: #e74c3c;
+  background: #fef5f5;
+}
+
+.video-format-card.selected {
+  border-color: #e74c3c;
+  background: #fef0f0;
+  box-shadow: 0 0 0 2px rgba(231, 76, 60, 0.2);
+}
+
+.video-format-icon {
+  font-size: 22px;
+  flex-shrink: 0;
+}
+
+.video-format-info {
+  min-width: 0;
+}
+
+.video-format-info h3 {
+  margin: 0;
+  font-size: 12px;
+  color: #333;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.video-format-card .format-badge {
+  background: #e74c3c !important;
+}
+
+.ffmpeg-command-section {
+  margin-bottom: 16px;
+}
+
+.ffmpeg-command {
+  background: #1e1e1e;
+  color: #d4d4d4;
+  border-radius: 6px;
+  padding: 14px 16px;
+  font-family: 'Courier New', Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  word-break: break-all;
+  white-space: pre-wrap;
+  margin: 8px 0;
+  max-height: 120px;
+  overflow-y: auto;
+  user-select: all;
+}
+
+.ffmpeg-copy-btn {
+  background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 20px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.ffmpeg-copy-btn:hover {
+  background: linear-gradient(135deg, #c0392b 0%, #e74c3c 100%);
+}
+
+@media (max-width: 768px) {
+  .video-modal-content {
+    max-width: 95%;
+  }
+  .video-format-cards {
+    flex-wrap: wrap;
+  }
+  .video-format-card {
+    min-width: 80px;
+  }
 }
 
