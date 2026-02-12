@@ -3,7 +3,7 @@
   "name": "MS Teams Video & Transcript Downloader",
   "short_name": "Teams Downloader",
   "version": "1.1.0",
-  "description": "Download MS Teams meeting videos and transcripts. Transcripts in multiple formats (JSON, VTT, Grouped). Videos via ffmpeg commands. Works even when download is disabled.",
+  "description": "Download MS Teams meeting videos and transcripts. Transcripts in multiple formats (JSON, VTT, Grouped). Videos via ffmpeg commands",
   "author": "Brendan Gooden",
   "homepage_url": "https://github.com/brendangooden/ms-teams-transcript-downloader",
   "permissions": [
