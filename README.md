@@ -1,6 +1,6 @@
-# MS Teams Video & Transcript Downloader - Chrome Extension
+# MS Teams / Sharepoint Video & Transcript Downloader - Chrome Extension
 
-A Chrome extension that allows you to download MS Teams meeting recordings (video/audio) and transcripts, even when downloads are disabled due to permissions.
+A Chrome extension that allows you to download MS Teams / Sharepoint meeting recordings (video/audio) and transcripts, even when downloads are disabled due to permissions.
 
 This works for both `teams.microsoft.com` (Web Teams) and `*.sharepoint.com` meeting recording links.
 
