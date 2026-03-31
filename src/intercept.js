@@ -7,9 +7,10 @@
     const url = args[0];
     
     // Check if this is the media API metadata call (not the actual VTT content)
-    // Only intercept URLs from my-*.sharepoint.com/personal/* to avoid interfering with other SharePoint sites
-    if (url && typeof url === 'string' && 
-        /https:\/\/[^\/]*-my\.sharepoint\.com\/personal\//.test(url) &&
+    // Intercept both personal OneDrive recordings (-my.sharepoint.com/personal/) and
+    // team/org site recordings (.sharepoint.com/sites/) to support large company calls
+    if (url && typeof url === 'string' &&
+        /https:\/\/[^\/]*\.sharepoint\.com\/(personal|sites)\//.test(url) &&
         url.includes('_api/v2.1/drives') && 
         url.includes('items/') && 
         url.includes('media') && 
