@@ -3,7 +3,7 @@
   "name": "MS Teams Video & Transcript Downloader",
   "short_name": "Teams Downloader",
   "version": "1.2.0",
-  "description": "Download MS Teams meeting videos and transcripts directly in the browser. Transcripts in multiple formats (JSON, VTT, Grouped). Videos downloadable in-browser or via ffmpeg/yt-dlp CLI",
+  "description": "Download MS Teams meeting videos and transcripts. Multiple formats (JSON, VTT, Grouped). In-browser or CLI",
   "author": "Brendan Gooden",
   "homepage_url": "https://github.com/brendangooden/ms-teams-sharepoint-downloader",
   "permissions": [
