@@ -8,11 +8,10 @@ This works for both `teams.microsoft.com` (Web Teams) and `*.sharepoint.com` mee
 
 ### Video/Audio Download
 - 🎬 **Video Download**: Adds a "Download Video" button to the top command bar
-- 🔧 **Two Tools**: Choose between **ffmpeg** (simple) or **yt-dlp** (parallel & faster)
+- 🌐 **Browser Download**: Download Video+Audio, Audio (M4A), or Video Only directly in the browser — no extra tools needed
+- 🔧 **CLI Options**: ffmpeg and yt-dlp tabs available for power users needing MP3/WAV or parallel downloads
 - 🎵 **5 Format Options**: Video + Audio (.mp4), Audio Only (.m4a, .mp3, .wav), Video Only (.mp4)
-- 📋 **Copy-to-Clipboard**: Generates ready-to-use terminal commands — just paste and run
 - ✏️ **Editable Filename**: Auto-detected from page title, fully customizable
-- ⚡ **Parallel Downloads**: yt-dlp mode uses `-N 16` for 16 concurrent fragment downloads
 
 ### Transcript Download
 - 🎙️ **Automatic Detection**: Detects when you're viewing a Teams transcript
@@ -24,17 +23,11 @@ This works for both `teams.microsoft.com` (Web Teams) and `*.sharepoint.com` mee
 
 ## Screenshots
 
-### Video Download Modal — yt-dlp (Parallel & Faster)
+### Video Download Modal — Browser Download
 
-![Video Download with yt-dlp](screenshots/Example_Video_Audio_Ytdlp.png)
+![Video Download in Browser](screenshots/Example_Browser.png)
 
-Select a format, choose yt-dlp for parallel downloads, and copy the generated command.
-
-### Video Download Modal — ffmpeg (Simple)
-
-![Video Download with ffmpeg](screenshots/Example_Audio_Ffmpeg.png)
-
-ffmpeg mode generates straightforward commands for any format.
+Select a format and download directly in the browser. For MP3/WAV or CLI-based downloads, switch to the ffmpeg or yt-dlp tabs.
 
 ### Teams Recording Page
 
@@ -79,23 +72,18 @@ The extension adds a "Download Video" button in the top command bar and a "Downl
    - A red **"Download Video"** button appears in the top command bar
 
 2. **Click "Download Video"**:
-   - A modal dialog opens with format and tool options
+   - A modal dialog opens with the **Download** tab selected by default
 
-3. **Choose Your Tool**:
-   - **ffmpeg** — Simple, widely available. Downloads segments sequentially
-   - **yt-dlp** — Parallel downloads (`-N 16`), significantly faster for large recordings
+3. **Browser Download** (recommended):
+   - Select a format: Video + Audio (.mp4), Audio M4A, or Video Only
+   - Click the **Download** button — the file downloads directly in your browser
+   - A progress bar shows download status
 
-4. **Select a Format**:
-   - **Video + Audio** (.mp4) — Best quality, original streams copied
-   - **Audio Only** (.m4a / .mp3 / .wav) — Extract just the audio
-   - **Video Only** (.mp4) — No audio track
+4. **CLI Download** (optional — for power users):
+   - Switch to the **ffmpeg** or **yt-dlp** tab for additional formats (MP3, WAV) or CLI-based downloads
+   - Select a format, then click **Copy Command** and paste into your terminal
 
-5. **Copy and Run**:
-   - Edit the filename if needed (auto-detected from page title)
-   - Click **"Copy Command"** to copy the generated command
-   - Paste into your terminal and run
-
-   > **Note**: The URL contains a temporary auth token that will expire. Generate and use the command promptly.
+   > **Note**: CLI commands contain a temporary auth token in the URL that will expire. Generate and use the command promptly.
 
 ### Downloading Transcripts
 
@@ -285,7 +273,7 @@ Enable verbose logging in the console:
 - Cannot bypass access restrictions — only works if you can view the content
 - Chrome/Edge only (Manifest V3)
 - Must have the Transcript tab open for transcript detection
-- Video download requires **ffmpeg** or **yt-dlp** installed locally
+- MP3 and WAV formats require **ffmpeg** or **yt-dlp** installed locally (browser download supports MP4 and M4A)
 - Video manifest URLs contain temporary auth tokens that expire after a period
 
 ## License

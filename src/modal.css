@@ -298,7 +298,7 @@
   color: #e65100;
 }
 
-.video-tool-toggle {
+.video-tab-bar {
   display: flex;
   gap: 0;
   margin-bottom: 16px;
@@ -307,7 +307,7 @@
   overflow: hidden;
 }
 
-.tool-toggle-btn {
+.video-tab-btn {
   flex: 1;
   padding: 10px 16px;
   border: none;
@@ -318,25 +318,62 @@
   cursor: pointer;
   transition: all 0.2s ease;
   text-align: center;
-}
-
-.tool-toggle-btn:first-child {
   border-right: 1px solid #ddd;
 }
 
-.tool-toggle-btn.active {
+.video-tab-btn:last-child {
+  border-right: none;
+}
+
+.video-tab-btn.active {
   background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
   color: white;
 }
 
-.tool-toggle-btn:not(.active):hover {
+.video-tab-btn:not(.active):hover {
   background: #eee;
 }
 
-.tool-hint {
+.video-tab-hint {
   font-weight: 400;
   font-size: 11px;
   opacity: 0.8;
+}
+
+.video-tab-panel {
+  display: none;
+}
+
+.video-tab-panel.active {
+  display: block;
+}
+
+/* Download tab: prominent download button */
+.browser-dl-action-btn {
+  width: 100%;
+  padding: 12px 20px;
+  background: linear-gradient(135deg, #27ae60 0%, #1e8449 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-top: 12px;
+}
+
+.browser-dl-action-btn:hover {
+  background: linear-gradient(135deg, #1e8449 0%, #27ae60 100%);
+}
+
+.browser-dl-action-btn:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+.browser-dl-action-btn.browser-dl-cancelling {
+  background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
 }
 
 .video-format-cards {
@@ -444,3 +481,37 @@
   }
 }
 
+
+.browser-download-section {
+  margin-bottom: 12px;
+}
+
+.browser-dl-progress-bar-wrap {
+  height: 8px;
+  background: #e0e0e0;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+
+.browser-dl-progress-bar {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #27ae60, #2ecc71);
+  border-radius: 4px;
+  transition: width 0.2s ease;
+}
+
+.browser-dl-progress-bar.browser-dl-complete {
+  background: linear-gradient(90deg, #1e8449, #27ae60);
+}
+
+.browser-dl-progress-bar.browser-dl-error {
+  background: linear-gradient(90deg, #e74c3c, #c0392b);
+}
+
+.browser-dl-status {
+  font-size: 12px;
+  color: #555;
+  min-height: 18px;
+}
