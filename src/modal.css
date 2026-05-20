@@ -1,3 +1,73 @@
+/* ============================================================================
+   Theme tokens — single source of truth for both modes.
+   Dark mode overrides at the bottom via @media (prefers-color-scheme: dark).
+   ============================================================================ */
+:root {
+  /* Surfaces */
+  --ttd-bg:                  #ffffff;
+  --ttd-bg-elevated:         #f8f9fa;
+  --ttd-bg-input:            #ffffff;
+  --ttd-bg-backdrop:         rgba(0, 0, 0, 0.7);
+  --ttd-bg-backdrop-warning: rgba(0, 0, 0, 0.78);
+  --ttd-bg-sample:           #f5f5f5;
+  --ttd-bg-cancel:           #f0f0f0;
+  --ttd-bg-cancel-hover:     #e0e0e0;
+  --ttd-bg-format-hover:     #f8f9ff;
+  --ttd-bg-format-selected:  #f0f3ff;
+  --ttd-bg-video-hover:      #fef5f5;
+  --ttd-bg-video-selected:   #fef0f0;
+  --ttd-bg-tab:              #f5f5f5;
+  --ttd-bg-tab-hover:        #eeeeee;
+  --ttd-bg-progress-track:   #e0e0e0;
+  --ttd-bg-filename-error:   #fff0f0;
+  --ttd-bg-star-hover:       #f6f6f6;
+  --ttd-bg-info-warning:     #fff8e1;
+  --ttd-bg-command-code:     #1e1e1e;
+
+  /* Text */
+  --ttd-text:                #333333;
+  --ttd-text-strong:         #000000;
+  --ttd-text-muted:          #666666;
+  --ttd-text-dim:            #999999;
+  --ttd-text-placeholder:    #aaaaaa;
+  --ttd-text-status:         #555555;
+  --ttd-text-info-warning:   #5d4037;
+  --ttd-text-info-warn-str:  #e65100;
+  --ttd-text-command-code:   #d4d4d4;
+
+  /* Borders */
+  --ttd-border:              #eeeeee;
+  --ttd-border-strong:       #dddddd;
+  --ttd-border-info-warning: #ffe082;
+  --ttd-border-info-accent:  #ffa000;
+
+  /* Brand accents */
+  --ttd-accent:              #667eea;
+  --ttd-accent-text:         #667eea;
+  --ttd-accent-grad-start:   #667eea;
+  --ttd-accent-grad-end:     #764ba2;
+  --ttd-accent-shadow-tint:  rgba(102, 126, 234, 0.2);
+  --ttd-accent-active-tint:  rgba(102, 126, 234, 0.4);
+
+  /* Danger / video accent */
+  --ttd-danger:              #e74c3c;
+  --ttd-danger-strong:       #c0392b;
+  --ttd-danger-darker:       #a93225;
+  --ttd-danger-tint:         rgba(231, 76, 60, 0.2);
+
+  /* Success / browser download accent */
+  --ttd-success-grad-start:  #27ae60;
+  --ttd-success-grad-end:    #1e8449;
+
+  /* Warning amber (no-transcript dialog) */
+  --ttd-warn-amber:          #d68910;
+  --ttd-warn-amber-strong:   #b9770e;
+
+  /* Shadows */
+  --ttd-shadow-modal:        0 10px 40px rgba(0, 0, 0, 0.3);
+  --ttd-shadow-overlay:      0 18px 60px rgba(0, 0, 0, 0.5);
+}
+
 /* Format Selection Modal Styles */
 #formatSelectionModal {
   display: none;
@@ -6,7 +76,7 @@
   left: 0;
   width: 100%;
   height: 100%;
-  background: rgba(0, 0, 0, 0.7);
+  background: var(--ttd-bg-backdrop);
   z-index: 999999;
   justify-content: center;
   align-items: center;
@@ -17,14 +87,14 @@
 }
 
 .modal-content {
-  background: white;
+  background: var(--ttd-bg);
   border-radius: 12px;
   padding: 24px;
   max-width: 1200px;
   width: 95%;
   max-height: 85vh;
   overflow-y: auto;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--ttd-shadow-modal);
 }
 
 .modal-header {
@@ -32,21 +102,21 @@
   justify-content: space-between;
   align-items: center;
   margin-bottom: 20px;
-  border-bottom: 2px solid #eee;
+  border-bottom: 2px solid var(--ttd-border);
   padding-bottom: 12px;
 }
 
 .modal-header h2 {
   margin: 0;
   font-size: 24px;
-  color: #333;
+  color: var(--ttd-text);
 }
 
 .modal-close {
   background: none;
   border: none;
   font-size: 28px;
-  color: #999;
+  color: var(--ttd-text-dim);
   cursor: pointer;
   padding: 0;
   width: 32px;
@@ -56,7 +126,7 @@
 }
 
 .modal-close:hover {
-  color: #333;
+  color: var(--ttd-text);
 }
 
 .format-options-container {
@@ -74,7 +144,7 @@
 .format-option {
   flex: 1;
   min-width: 0;
-  border: 2px solid #ddd;
+  border: 2px solid var(--ttd-border-strong);
   border-radius: 8px;
   padding: 16px;
   cursor: pointer;
@@ -84,19 +154,19 @@
 }
 
 .format-option:hover {
-  border-color: #667eea;
-  background: #f8f9ff;
+  border-color: var(--ttd-accent);
+  background: var(--ttd-bg-format-hover);
 }
 
 .format-option.selected {
-  border-color: #667eea;
-  background: #f0f3ff;
-  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
+  border-color: var(--ttd-accent);
+  background: var(--ttd-bg-format-selected);
+  box-shadow: 0 0 0 2px var(--ttd-accent-shadow-tint);
 }
 
 .format-option h3 {
   margin: 0 0 8px 0;
-  color: #667eea;
+  color: var(--ttd-accent-text);
   font-size: 16px;
   display: flex;
   align-items: center;
@@ -105,7 +175,7 @@
 
 .format-badge {
   font-size: 11px;
-  background: #667eea;
+  background: var(--ttd-accent);
   color: white;
   padding: 2px 8px;
   border-radius: 4px;
@@ -114,18 +184,18 @@
 
 .format-option p {
   margin: 0 0 12px 0;
-  color: #666;
+  color: var(--ttd-text-muted);
   font-size: 13px;
   flex-grow: 1;
 }
 
 .format-sample {
-  background: #f5f5f5;
+  background: var(--ttd-bg-sample);
   border-radius: 4px;
   padding: 12px;
   font-family: 'Courier New', monospace;
   font-size: 12px;
-  color: #333;
+  color: var(--ttd-text);
   max-height: 150px;
   overflow-y: auto;
   white-space: pre-wrap;
@@ -139,7 +209,7 @@
   gap: 12px;
   margin-top: 20px;
   padding-top: 16px;
-  border-top: 1px solid #eee;
+  border-top: 1px solid var(--ttd-border);
 }
 
 .modal-actions-buttons {
@@ -157,7 +227,7 @@
 }
 
 .modal-star-link:hover {
-  background: #f6f6f6;
+  background: var(--ttd-bg-star-hover);
   transform: translateY(-1px);
 }
 
@@ -177,26 +247,26 @@
 }
 
 .modal-button-cancel {
-  background: #f0f0f0;
-  color: #666;
+  background: var(--ttd-bg-cancel);
+  color: var(--ttd-text-muted);
 }
 
 .modal-button-cancel:hover {
-  background: #e0e0e0;
+  background: var(--ttd-bg-cancel-hover);
 }
 
 .modal-button-download {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, var(--ttd-accent-grad-start) 0%, var(--ttd-accent-grad-end) 100%);
   color: white;
 }
 
 .modal-button-download:hover {
-  background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+  background: linear-gradient(135deg, var(--ttd-accent-grad-end) 0%, var(--ttd-accent-grad-start) 100%);
 }
 
 .format-badge {
   display: inline-block;
-  background: #667eea;
+  background: var(--ttd-accent);
   color: white;
   padding: 2px 8px;
   border-radius: 4px;
@@ -209,9 +279,9 @@
 .filename-section {
   margin: 20px 0;
   padding: 16px;
-  background: #f8f9fa;
+  background: var(--ttd-bg-elevated);
   border-radius: 8px;
-  border: 1px solid #e0e0e0;
+  border: 1px solid var(--ttd-border-strong);
 }
 
 .filename-label {
@@ -220,7 +290,7 @@
   gap: 8px;
   margin-bottom: 8px;
   font-weight: 600;
-  color: #333;
+  color: var(--ttd-text);
 }
 
 .label-text {
@@ -229,7 +299,7 @@
 
 .auto-detected {
   font-size: 12px;
-  color: #999;
+  color: var(--ttd-text-dim);
   font-weight: normal;
   font-style: italic;
 }
@@ -238,15 +308,15 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  background: white;
-  border: 2px solid #ddd;
+  background: var(--ttd-bg-input);
+  border: 2px solid var(--ttd-border-strong);
   border-radius: 6px;
   padding: 2px 8px;
   transition: border-color 0.2s ease;
 }
 
 .filename-input-container:focus-within {
-  border-color: #667eea;
+  border-color: var(--ttd-accent);
 }
 
 .filename-input {
@@ -256,20 +326,21 @@
   padding: 10px 8px;
   font-size: 14px;
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  color: #333;
+  color: var(--ttd-text);
+  background: transparent;
 }
 
 .filename-input.error {
-  background: #fff0f0;
+  background: var(--ttd-bg-filename-error);
 }
 
 .filename-input::placeholder {
-  color: #aaa;
+  color: var(--ttd-text-placeholder);
 }
 
 .filename-suffix,
 .filename-extension {
-  color: #999;
+  color: var(--ttd-text-dim);
   font-size: 14px;
   font-family: monospace;
   white-space: nowrap;
@@ -279,7 +350,7 @@
 .filename-hint {
   margin-top: 6px;
   font-size: 12px;
-  color: #666;
+  color: var(--ttd-text-muted);
 }
 
 /* ============================================================================
@@ -293,7 +364,7 @@
   left: 0;
   width: 100%;
   height: 100%;
-  background: rgba(0, 0, 0, 0.7);
+  background: var(--ttd-bg-backdrop);
   z-index: 999999;
   justify-content: center;
   align-items: center;
@@ -308,26 +379,26 @@
 }
 
 .video-info-warning {
-  background: #fff8e1;
-  border: 1px solid #ffe082;
-  border-left: 4px solid #ffa000;
+  background: var(--ttd-bg-info-warning);
+  border: 1px solid var(--ttd-border-info-warning);
+  border-left: 4px solid var(--ttd-border-info-accent);
   border-radius: 6px;
   padding: 12px 16px;
   margin-bottom: 16px;
   font-size: 13px;
-  color: #5d4037;
+  color: var(--ttd-text-info-warning);
   line-height: 1.5;
 }
 
 .video-info-warning strong {
-  color: #e65100;
+  color: var(--ttd-text-info-warn-str);
 }
 
 .video-tab-bar {
   display: flex;
   gap: 0;
   margin-bottom: 16px;
-  border: 2px solid #ddd;
+  border: 2px solid var(--ttd-border-strong);
   border-radius: 8px;
   overflow: hidden;
 }
@@ -336,14 +407,14 @@
   flex: 1;
   padding: 10px 16px;
   border: none;
-  background: #f5f5f5;
-  color: #666;
+  background: var(--ttd-bg-tab);
+  color: var(--ttd-text-muted);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
   text-align: center;
-  border-right: 1px solid #ddd;
+  border-right: 1px solid var(--ttd-border-strong);
 }
 
 .video-tab-btn:last-child {
@@ -351,12 +422,12 @@
 }
 
 .video-tab-btn.active {
-  background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+  background: linear-gradient(135deg, var(--ttd-danger) 0%, var(--ttd-danger-strong) 100%);
   color: white;
 }
 
 .video-tab-btn:not(.active):hover {
-  background: #eee;
+  background: var(--ttd-bg-tab-hover);
 }
 
 .video-tab-hint {
@@ -377,7 +448,7 @@
 .browser-dl-action-btn {
   width: 100%;
   padding: 12px 20px;
-  background: linear-gradient(135deg, #27ae60 0%, #1e8449 100%);
+  background: linear-gradient(135deg, var(--ttd-success-grad-start) 0%, var(--ttd-success-grad-end) 100%);
   color: white;
   border: none;
   border-radius: 8px;
@@ -389,7 +460,7 @@
 }
 
 .browser-dl-action-btn:hover {
-  background: linear-gradient(135deg, #1e8449 0%, #27ae60 100%);
+  background: linear-gradient(135deg, var(--ttd-success-grad-end) 0%, var(--ttd-success-grad-start) 100%);
 }
 
 .browser-dl-action-btn:disabled {
@@ -398,7 +469,7 @@
 }
 
 .browser-dl-action-btn.browser-dl-cancelling {
-  background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+  background: linear-gradient(135deg, var(--ttd-danger) 0%, var(--ttd-danger-strong) 100%);
 }
 
 .video-format-cards {
@@ -414,7 +485,7 @@
   flex-direction: column;
   align-items: center;
   gap: 6px;
-  border: 2px solid #ddd;
+  border: 2px solid var(--ttd-border-strong);
   border-radius: 8px;
   padding: 12px 10px;
   cursor: pointer;
@@ -425,14 +496,14 @@
 }
 
 .video-format-card:hover {
-  border-color: #e74c3c;
-  background: #fef5f5;
+  border-color: var(--ttd-danger);
+  background: var(--ttd-bg-video-hover);
 }
 
 .video-format-card.selected {
-  border-color: #e74c3c;
-  background: #fef0f0;
-  box-shadow: 0 0 0 2px rgba(231, 76, 60, 0.2);
+  border-color: var(--ttd-danger);
+  background: var(--ttd-bg-video-selected);
+  box-shadow: 0 0 0 2px var(--ttd-danger-tint);
 }
 
 .video-format-icon {
@@ -447,7 +518,7 @@
 .video-format-info h3 {
   margin: 0;
   font-size: 12px;
-  color: #333;
+  color: var(--ttd-text);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -455,7 +526,7 @@
 }
 
 .video-format-card .format-badge {
-  background: #e74c3c !important;
+  background: var(--ttd-danger) !important;
 }
 
 .ffmpeg-command-section {
@@ -463,8 +534,8 @@
 }
 
 .ffmpeg-command {
-  background: #1e1e1e;
-  color: #d4d4d4;
+  background: var(--ttd-bg-command-code);
+  color: var(--ttd-text-command-code);
   border-radius: 6px;
   padding: 14px 16px;
   font-family: 'Courier New', Consolas, monospace;
@@ -479,7 +550,7 @@
 }
 
 .ffmpeg-copy-btn {
-  background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+  background: linear-gradient(135deg, var(--ttd-danger) 0%, var(--ttd-danger-strong) 100%);
   color: white;
   border: none;
   border-radius: 6px;
@@ -491,7 +562,7 @@
 }
 
 .ffmpeg-copy-btn:hover {
-  background: linear-gradient(135deg, #c0392b 0%, #e74c3c 100%);
+  background: linear-gradient(135deg, var(--ttd-danger-strong) 0%, var(--ttd-danger) 100%);
 }
 
 @media (max-width: 768px) {
@@ -513,7 +584,7 @@
 
 .browser-dl-progress-bar-wrap {
   height: 8px;
-  background: #e0e0e0;
+  background: var(--ttd-bg-progress-track);
   border-radius: 4px;
   overflow: hidden;
   margin-bottom: 6px;
@@ -522,22 +593,22 @@
 .browser-dl-progress-bar {
   height: 100%;
   width: 0%;
-  background: linear-gradient(90deg, #27ae60, #2ecc71);
+  background: linear-gradient(90deg, var(--ttd-success-grad-start), #2ecc71);
   border-radius: 4px;
   transition: width 0.2s ease;
 }
 
 .browser-dl-progress-bar.browser-dl-complete {
-  background: linear-gradient(90deg, #1e8449, #27ae60);
+  background: linear-gradient(90deg, var(--ttd-success-grad-end), var(--ttd-success-grad-start));
 }
 
 .browser-dl-progress-bar.browser-dl-error {
-  background: linear-gradient(90deg, #e74c3c, #c0392b);
+  background: linear-gradient(90deg, var(--ttd-danger), var(--ttd-danger-strong));
 }
 
 .browser-dl-status {
   font-size: 12px;
-  color: #555;
+  color: var(--ttd-text-status);
   min-height: 18px;
 }
 
@@ -546,7 +617,7 @@
   display: none;
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.78);
+  background: var(--ttd-bg-backdrop-warning);
   z-index: 1000000;
   justify-content: center;
   align-items: center;
@@ -556,13 +627,13 @@
 #ttdDrmWarningOverlay.show { display: flex; }
 
 #ttdDrmWarningOverlay .ttd-drm-dialog {
-  background: #fff;
-  border: 3px solid #c0392b;
+  background: var(--ttd-bg);
+  border: 3px solid var(--ttd-danger-strong);
   border-radius: 14px;
   max-width: 560px;
   width: 100%;
   padding: 28px 30px;
-  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--ttd-shadow-overlay);
   text-align: left;
   font-family: inherit;
 }
@@ -575,19 +646,19 @@
 
 #ttdDrmWarningOverlay h2 {
   margin: 0 0 12px;
-  color: #c0392b;
+  color: var(--ttd-danger-strong);
   font-size: 24px;
   font-weight: 700;
 }
 
 #ttdDrmWarningOverlay p {
   margin: 0 0 12px;
-  color: #222;
+  color: var(--ttd-text);
   font-size: 15px;
   line-height: 1.5;
 }
 
-#ttdDrmWarningOverlay p strong { color: #000; }
+#ttdDrmWarningOverlay p strong { color: var(--ttd-text-strong); }
 
 #ttdDrmWarningOverlay .ttd-drm-actions {
   margin-top: 18px;
@@ -595,7 +666,7 @@
 }
 
 #ttdDrmWarningOverlay button {
-  background: #c0392b;
+  background: var(--ttd-danger-strong);
   color: #fff;
   border: none;
   border-radius: 6px;
@@ -605,7 +676,7 @@
   cursor: pointer;
 }
 
-#ttdDrmWarningOverlay button:hover { background: #a93225; }
+#ttdDrmWarningOverlay button:hover { background: var(--ttd-danger-darker); }
 
 /* No-transcript warning dialog — shown when SharePoint reports no transcript,
  * or when we can't determine whether a transcript exists. Warning (amber)
@@ -615,7 +686,7 @@
   display: none;
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.78);
+  background: var(--ttd-bg-backdrop-warning);
   z-index: 1000000;
   justify-content: center;
   align-items: center;
@@ -625,13 +696,13 @@
 #ttdNoTranscriptOverlay.show { display: flex; }
 
 #ttdNoTranscriptOverlay .ttd-info-dialog {
-  background: #fff;
-  border: 3px solid #d68910;
+  background: var(--ttd-bg);
+  border: 3px solid var(--ttd-warn-amber);
   border-radius: 14px;
   max-width: 560px;
   width: 100%;
   padding: 28px 30px;
-  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--ttd-shadow-overlay);
   text-align: left;
   font-family: inherit;
 }
@@ -644,19 +715,19 @@
 
 #ttdNoTranscriptOverlay h2 {
   margin: 0 0 12px;
-  color: #b9770e;
+  color: var(--ttd-warn-amber-strong);
   font-size: 22px;
   font-weight: 700;
 }
 
 #ttdNoTranscriptOverlay p {
   margin: 0 0 12px;
-  color: #222;
+  color: var(--ttd-text);
   font-size: 15px;
   line-height: 1.5;
 }
 
-#ttdNoTranscriptOverlay p strong { color: #000; }
+#ttdNoTranscriptOverlay p strong { color: var(--ttd-text-strong); }
 
 #ttdNoTranscriptOverlay .ttd-info-actions {
   margin-top: 18px;
@@ -664,7 +735,7 @@
 }
 
 #ttdNoTranscriptOverlay button {
-  background: #d68910;
+  background: var(--ttd-warn-amber);
   color: #fff;
   border: none;
   border-radius: 6px;
@@ -674,4 +745,77 @@
   cursor: pointer;
 }
 
-#ttdNoTranscriptOverlay button:hover { background: #b9770e; }
+#ttdNoTranscriptOverlay button:hover { background: var(--ttd-warn-amber-strong); }
+
+/* ============================================================================
+   Dark mode — follows the OS / browser preference.
+   Surfaces sink to a near-black with cool undertone; text lifts to warm
+   off-white. Brand gradients (purple, red, green) keep their hues — they're
+   colour-on-colour and read well on either surface. Code blocks deepen one
+   step below the modal surface for an "inset terminal" feel.
+   ============================================================================ */
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* Surfaces */
+    --ttd-bg:                  #1f1f23;
+    --ttd-bg-elevated:         #26262c;
+    --ttd-bg-input:            #16161a;
+    --ttd-bg-backdrop:         rgba(0, 0, 0, 0.78);
+    --ttd-bg-backdrop-warning: rgba(0, 0, 0, 0.84);
+    --ttd-bg-sample:           #16161a;
+    --ttd-bg-cancel:           #2a2a30;
+    --ttd-bg-cancel-hover:     #36363e;
+    --ttd-bg-format-hover:     #232636;
+    --ttd-bg-format-selected:  #1e2138;
+    --ttd-bg-video-hover:      #2a1f1f;
+    --ttd-bg-video-selected:   #2e1a1a;
+    --ttd-bg-tab:              #26262c;
+    --ttd-bg-tab-hover:        #32323a;
+    --ttd-bg-progress-track:   #34343a;
+    --ttd-bg-filename-error:   #3a1c1c;
+    --ttd-bg-star-hover:       #2a2a30;
+    --ttd-bg-info-warning:     #2e2616;
+    --ttd-bg-command-code:     #0e0e10;
+
+    /* Text */
+    --ttd-text:                #e4e4e8;
+    --ttd-text-strong:         #ffffff;
+    --ttd-text-muted:          #b0b0b8;
+    --ttd-text-dim:            #80808a;
+    --ttd-text-placeholder:    #5d5d65;
+    --ttd-text-status:         #a8a8b0;
+    --ttd-text-info-warning:   #e8d4a0;
+    --ttd-text-info-warn-str:  #ffb74d;
+    --ttd-text-command-code:   #d4d4d4;
+
+    /* Borders */
+    --ttd-border:              #2e2e34;
+    --ttd-border-strong:       #3a3a42;
+    --ttd-border-info-warning: #5a4a1c;
+    --ttd-border-info-accent:  #ffb74d;
+
+    /* Brand accents — gradients stay, accent-text brightens for contrast */
+    --ttd-accent-text:         #8d9eff;
+    --ttd-accent-shadow-tint:  rgba(141, 158, 255, 0.28);
+
+    /* Danger tint brightens slightly to read on dark video-card surfaces */
+    --ttd-danger-tint:         rgba(255, 107, 91, 0.28);
+
+    /* Shadows — deeper, since they sit on darker surfaces */
+    --ttd-shadow-modal:        0 14px 50px rgba(0, 0, 0, 0.6);
+    --ttd-shadow-overlay:      0 20px 70px rgba(0, 0, 0, 0.7);
+  }
+
+  /* The disabled-state browser-dl button is hard-coded grey; nudge it so it
+     doesn't look like a light-mode artefact left in. */
+  .browser-dl-action-btn:disabled {
+    background: #3a3a42;
+    color: #6e6e78;
+  }
+
+  /* The star badge from shields.io ships its own light-themed colours.
+     A gentle filter keeps it readable on dark without changing its glyphs. */
+  .modal-star-link .star-badge {
+    filter: brightness(0.9) contrast(1.05);
+  }
+}
