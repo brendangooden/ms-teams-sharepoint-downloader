@@ -225,8 +225,13 @@
         </div>
         
         <div class="modal-actions">
-          <button class="modal-button modal-button-cancel" id="modalCancel">Cancel</button>
-          <button class="modal-button modal-button-download" id="modalDownload">Download</button>
+          <a class="modal-star-link" href="https://github.com/brendangooden/ms-teams-sharepoint-downloader" target="_blank" rel="noopener noreferrer" title="Star this project on GitHub">
+            <img class="star-badge" src="https://img.shields.io/github/stars/brendangooden/ms-teams-sharepoint-downloader?style=social&label=Star" alt="Star on GitHub" />
+          </a>
+          <div class="modal-actions-buttons">
+            <button class="modal-button modal-button-cancel" id="modalCancel">Cancel</button>
+            <button class="modal-button modal-button-download" id="modalDownload">Download</button>
+          </div>
         </div>
       </div>
     `;
@@ -2020,7 +2025,12 @@
         </div>
 
         <div class="modal-actions">
-          <button class="modal-button modal-button-cancel" id="videoModalCancel">Close</button>
+          <a class="modal-star-link" href="https://github.com/brendangooden/ms-teams-sharepoint-downloader" target="_blank" rel="noopener noreferrer" title="Star this project on GitHub">
+            <img class="star-badge" src="https://img.shields.io/github/stars/brendangooden/ms-teams-sharepoint-downloader?style=social&label=Star" alt="Star on GitHub" />
+          </a>
+          <div class="modal-actions-buttons">
+            <button class="modal-button modal-button-cancel" id="videoModalCancel">Close</button>
+          </div>
         </div>
       </div>
     `;

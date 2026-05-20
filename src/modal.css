@@ -134,11 +134,36 @@
 
 .modal-actions {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
   gap: 12px;
   margin-top: 20px;
   padding-top: 16px;
   border-top: 1px solid #eee;
+}
+
+.modal-actions-buttons {
+  display: flex;
+  gap: 12px;
+  margin-left: auto;
+}
+
+.modal-star-link {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 6px;
+  border-radius: 6px;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.modal-star-link:hover {
+  background: #f6f6f6;
+  transform: translateY(-1px);
+}
+
+.modal-star-link .star-badge {
+  display: block;
+  height: 20px;
 }
 
 .modal-button {
