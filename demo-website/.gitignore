@@ -6,3 +6,7 @@ dist/
 .DS_Store
 *.log
 .wrangler/
+
+.dev.vars*
+!.dev.vars.example
+!.env.example
