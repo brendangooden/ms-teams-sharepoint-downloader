@@ -270,6 +270,11 @@ Enable verbose logging in the console:
 - MP3 and WAV formats require **ffmpeg** or **yt-dlp** installed locally (browser download supports MP4 and M4A)
 - Video manifest URLs contain temporary auth tokens that expire after a period
 
+### Will NOT work in these scenarios
+
+- **DRM-protected videos.** Microsoft has begun encrypting some SharePoint Stream videos (segment URLs contain `enableEncryption=1`). The bytes are AES-encrypted and can only be decrypted by the browser's built-in DRM module during playback. Neither this extension, nor ffmpeg, nor yt-dlp can produce a playable file — the extension will detect this and show a "DRM-protected" dialog. There is no legitimate workaround.
+- **Guest / unauthenticated viewers.** If you're viewing a video as a guest or external user (the SharePoint console shows `Anonymous or Email authenticated Guest User may not request tokens`), the CDN often refuses the cross-origin segment fetches the extension needs to make. The native player may still work via the browser's DRM path, but the extension cannot replicate it. Sign in as a member of the owning tenant if possible, or ask the owner to share the file directly via OneDrive.
+
 ## License
 
 MIT License - See LICENSE file for details

@@ -11,6 +11,32 @@
   let vttData = null; // Will store converted VTT
   let selectedFormat = 'vtt'; // Default format (json, vtt, or vtt-grouped)
   let videoManifestUrl = null;
+  // Bearer token captured from the player's own videomanifest fetch. Microsoft's
+  // .svc.ms CDN now requires this `x-spopactoken` header in addition to the
+  // P1-P4 query-string signature, otherwise the request returns HTTP 401 with
+  // `x-errorcode: NoAccessToken`.
+  let videoSpopActoken = null;
+  // Bearer token captured from any `/_api/v2.x/...` call the player makes.
+  // Replayed on our proactive transcript-metadata fetch so it works in
+  // guest/anonymous viewer scenarios where cookie auth alone is refused.
+  let spApiBearer = null;
+
+  // Inline SVG download glyph (down-arrow into tray) — clearer "downloadable"
+  // affordance than emoji icons. Shared by the legacy command-bar button and
+  // the floating widget so both feel consistent.
+  const DL_SVG = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5a.75.75 0 0 1 .75.75v6.69l1.97-1.97a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 8.03a.75.75 0 1 1 1.06-1.06l1.97 1.97V2.25A.75.75 0 0 1 8 1.5Z M2.75 12a.75.75 0 0 1 .75.75v.75c0 .14.11.25.25.25h8.5a.25.25 0 0 0 .25-.25v-.75a.75.75 0 0 1 1.5 0v.75A1.75 1.75 0 0 1 12.25 15h-8.5A1.75 1.75 0 0 1 2 13.5v-.75a.75.75 0 0 1 .75-.75Z"/></svg>';
+
+  // Build fetch init for any request to the .svc.ms media CDN, injecting the
+  // captured spopactoken bearer when available. Pass through other options.
+  function svcMsFetchInit(extra) {
+    const init = Object.assign({}, extra || {});
+    if (videoSpopActoken) {
+      init.headers = Object.assign({}, init.headers || {}, {
+        'x-spopactoken': videoSpopActoken
+      });
+    }
+    return init;
+  }
 
   // Listen for messages from the intercept.js script running in MAIN world
   window.addEventListener('message', (event) => {
@@ -19,26 +45,24 @@
     if (event.data.type === 'TRANSCRIPT_METADATA') {
       console.log('[Transcript Downloader] Received transcript metadata:', event.data);
       transcriptUrl = event.data.temporaryDownloadUrl;
+      updateFloatingWidgetState();
+    }
 
-      // Send to background script (only content.js can access chrome APIs)
-      if (chrome && chrome.runtime) {
-        chrome.runtime.sendMessage({
-          action: 'setTranscriptMetadata',
-          temporaryDownloadUrl: event.data.temporaryDownloadUrl
-        });
+    if (event.data.type === 'SP_API_BEARER') {
+      if (event.data.authorization && event.data.authorization !== spApiBearer) {
+        spApiBearer = event.data.authorization;
+        console.debug('[Transcript Downloader] Captured SharePoint Stream API bearer');
       }
     }
 
     if (event.data.type === 'VIDEO_MANIFEST_URL') {
-      console.log('[Transcript Downloader] Received video manifest URL:', event.data.manifestUrl);
+      console.log('[Transcript Downloader] Received video manifest URL:', event.data.manifestUrl,
+        event.data.spopactoken ? '(with x-spopactoken)' : '(no token)');
       videoManifestUrl = event.data.manifestUrl;
-
-      if (chrome && chrome.runtime) {
-        chrome.runtime.sendMessage({
-          action: 'setVideoManifestUrl',
-          manifestUrl: event.data.manifestUrl
-        });
-      }
+      // Only overwrite the captured token if the new message has one — never
+      // downgrade from "token present" to "token missing".
+      if (event.data.spopactoken) videoSpopActoken = event.data.spopactoken;
+      updateFloatingWidgetState();
     }
   });
 
@@ -218,6 +242,10 @@
         selectedFormat = option.getAttribute('data-format');
         updateButtonText(selectedFormat);
         updateFilenameSuffix(selectedFormat);
+        // Persist selection as the new default for next time
+        if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.sync) {
+          chrome.storage.sync.set({ defaultFormat: selectedFormat });
+        }
       });
     });
     
@@ -238,19 +266,20 @@
       }
     }
     
-    // Select default from storage
+    // Select default from storage (first-run default: vtt-grouped)
     if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.sync) {
       chrome.storage.sync.get(['defaultFormat'], (result) => {
-        const defaultFormat = result.defaultFormat || 'vtt';
+        const defaultFormat = result.defaultFormat || 'vtt-grouped';
         selectedFormat = defaultFormat;
         modal.querySelector(`[data-format="${defaultFormat}"]`)?.classList.add('selected');
         updateButtonText(defaultFormat);
+        updateFilenameSuffix(defaultFormat);
       });
     } else {
-      // Fallback if chrome.storage is not available
-      selectedFormat = 'vtt';
-      modal.querySelector('[data-format="vtt"]')?.classList.add('selected');
-      updateButtonText('vtt');
+      selectedFormat = 'vtt-grouped';
+      modal.querySelector('[data-format="vtt-grouped"]')?.classList.add('selected');
+      updateButtonText('vtt-grouped');
+      updateFilenameSuffix('vtt-grouped');
     }
     
     document.getElementById('modalClose').addEventListener('click', () => {
@@ -441,16 +470,31 @@
     const { driveId, itemId, sitePath } = deriveTranscriptContext();
     if (!driveId || !itemId || !sitePath) {
       console.warn('[Transcript Downloader] Cannot proactively fetch transcript metadata — missing context', { driveId, itemId, sitePath });
-      return null;
+      return { status: 'unknown' };
     }
 
-    const metaUrl = `${window.location.origin}${sitePath}/_api/v2.1/drives/${driveId}/items/${itemId}/media/transcripts`;
-    console.log('[Transcript Downloader] Proactively fetching transcript metadata:', metaUrl);
+    // Use the item-with-expand shape — same call the player makes via the
+    // /v2.1/.../items/{id}?$expand=media/transcripts endpoint. Falls back to
+    // the legacy /media/transcripts collection if the expand call returns no
+    // useful data.
+    const baseUrl = `${window.location.origin}${sitePath}/_api/v2.1/drives/${driveId}/items/${itemId}`;
+    const expandUrl = `${baseUrl}?select=media%2Ftranscripts%2CaudioTracks&%24expand=media%2Ftranscripts%2Cmedia%2FaudioTracks`;
+    const collectionUrl = `${baseUrl}/media/transcripts`;
 
-    const resp = await fetch(metaUrl, { credentials: 'include', headers: { 'Accept': 'application/json' } });
+    const headers = { 'Accept': 'application/json' };
+    if (spApiBearer) headers['Authorization'] = spApiBearer;
+
+    console.log('[Transcript Downloader] Proactively fetching transcript metadata:', expandUrl,
+      spApiBearer ? '(with bearer)' : '(cookie auth only)');
+
+    let resp = await fetch(expandUrl, { credentials: 'include', headers });
+    if (!resp.ok) {
+      console.debug('[Transcript Downloader] Expand call failed, falling back to collection endpoint');
+      resp = await fetch(collectionUrl, { credentials: 'include', headers });
+    }
     if (!resp.ok) {
       console.error('[Transcript Downloader] Metadata fetch failed:', resp.status, resp.statusText);
-      return null;
+      return { status: 'unknown' };
     }
     const data = await resp.json();
 
@@ -465,18 +509,23 @@
 
     if (transcript && transcript.temporaryDownloadUrl) {
       transcriptUrl = transcript.temporaryDownloadUrl;
-      if (chrome && chrome.runtime && chrome.runtime.sendMessage) {
-        try {
-          chrome.runtime.sendMessage({
-            action: 'setTranscriptMetadata',
-            temporaryDownloadUrl: transcript.temporaryDownloadUrl
-          });
-        } catch (_) { /* main-world copy may not have chrome.runtime */ }
-      }
-      return transcriptUrl;
+      updateFloatingWidgetState();
+      return { status: 'ok', url: transcriptUrl };
     }
+
+    // Distinguish "API explicitly says no transcripts exist" from "we got back
+    // a shape we don't understand". The expand call returns
+    // { media: {} } or { media: { transcripts: [] } } for never-transcribed
+    // videos; the collection call returns { value: [] }. Both are definitive.
+    const definitivelyEmpty =
+      (data && data.media && (
+        !Array.isArray(data.media.transcripts) ||
+        data.media.transcripts.length === 0
+      )) ||
+      (data && Array.isArray(data.value) && data.value.length === 0);
+
     console.warn('[Transcript Downloader] Metadata response had no temporaryDownloadUrl', data);
-    return null;
+    return { status: definitivelyEmpty ? 'none' : 'unknown' };
   }
 
   // Handle download button click - show format selection modal
@@ -488,18 +537,22 @@
 
     // If the intercept hook hasn't seen the metadata yet (user hasn't opened the
     // Transcript panel), fetch it ourselves before failing.
+    let fetchResult = null;
     if (!transcriptUrl) {
       try {
-        await fetchTranscriptUrl();
+        fetchResult = await fetchTranscriptUrl();
       } catch (e) {
         console.error('[Transcript Downloader] Proactive metadata fetch errored:', e);
       }
     }
 
-    // Check if we have the transcript URL
+    // Check if we have the transcript URL. If not, surface a loud modal that
+    // distinguishes "SharePoint says no transcript exists" from "we couldn't
+    // determine it" — much more useful than the previous generic alert.
     if (!transcriptUrl) {
-      alert('Transcript URL not captured. Open the Transcript panel on this video, then try again.');
-      console.error('[Transcript Downloader] No transcript URL available');
+      const status = (fetchResult && fetchResult.status) || 'unknown';
+      console.error('[Transcript Downloader] No transcript URL available; status:', status);
+      showNoTranscriptWarning(status);
       return;
     }
 
@@ -596,13 +649,21 @@
       throw new Error('Failed to parse DASH manifest XML');
     }
 
-    const baseUrl = manifestUrl.split('?')[0].replace(/\/[^/]*$/, '/');
+    // Honor a top-level <BaseURL> if the manifest provides one. Microsoft now
+    // returns an absolute BaseURL on the same origin as the page
+    // (sharepoint.com/_api_cached/...) which keeps segment fetches inside the
+    // browser's same-origin trust zone. Without using it, we'd construct URLs
+    // for the manifest's CDN host and get blocked by CORS.
+    const baseUrlEl = doc.querySelector('BaseURL');
+    const manifestDerivedBase = manifestUrl.split('?')[0].replace(/\/[^/]*$/, '/');
+    const baseUrl = (baseUrlEl && baseUrlEl.textContent.trim()) || manifestDerivedBase;
 
     function toAbsolute(url) {
       if (!url) return '';
       if (/^https:\/\//.test(url)) return url;
       if (/^[a-z][a-z0-9+\-.]*:/i.test(url)) throw new Error('Unsafe URL scheme in manifest: ' + url);
-      return baseUrl + url;
+      // URL constructor handles absolute, host-relative, and path-relative bases.
+      return new URL(url, baseUrl).href;
     }
 
     function expandTemplate(tpl, repId, bandwidth, number, time) {
@@ -674,10 +735,41 @@
         }
       }
 
-      tracks.push({ type, mimeType, initUrl, segments });
+      // Extract DASH-SEA AES-128-CBC encryption info per AdaptationSet. SEA
+      // (urn:mpeg:dash:sea:2012) is "Segment Encryption Authentication" — it
+      // declares per-CryptoPeriod AES keys delivered via plain HTTPS rather
+      // than a CDM/EME licence. We can decrypt these client-side. Hard DRM
+      // schemes (Widevine/PlayReady/FairPlay UUIDs) are handled separately
+      // upstream by the DRM_PROTECTED early-exit in triggerBrowserVideoDownload.
+      let encryption = null;
+      const seaCp = [...as.querySelectorAll('ContentProtection')].find(cp =>
+        cp.getAttribute('schemeIdUri') === 'urn:mpeg:dash:sea:2012'
+      );
+      if (seaCp) {
+        const segEnc = seaCp.querySelector('SegmentEncryption');
+        const scheme = segEnc ? segEnc.getAttribute('schemeIdUri') : '';
+        const period = seaCp.querySelector('CryptoPeriod');
+        const keyUri = period ? period.getAttribute('keyUriTemplate') : null;
+        const ivAttr = period ? (period.getAttribute('IV') || '') : '';
+        if (/aes128-cbc/i.test(scheme) && keyUri && ivAttr) {
+          encryption = {
+            scheme: 'aes-128-cbc',
+            keyUri,
+            iv: hexToBytes(ivAttr.replace(/^0x/i, ''))
+          };
+        }
+      }
+
+      tracks.push({ type, mimeType, initUrl, segments, encryption });
     }
 
     return tracks;
+  }
+
+  function hexToBytes(hex) {
+    const out = new Uint8Array(hex.length / 2);
+    for (let i = 0; i < out.length; i++) out[i] = parseInt(hex.substr(i * 2, 2), 16);
+    return out;
   }
 
   async function downloadDashSegments(tracks, onProgress, signal) {
@@ -700,12 +792,37 @@
       const label = tracks.length > 1 ? ` (${track.type} track)` : '';
       const initBufs = [];
 
-      // Init segment must come first — fetch sequentially before media segments
+      // If this track is SEA-encrypted, fetch the AES-128-CBC key once. The
+      // key endpoint lives on the .svc.ms CDN and requires the x-spopactoken
+      // bearer; the segment URLs themselves live on sharepoint.com (per the
+      // manifest's <BaseURL>) and are same-origin, no extra auth needed.
+      let cryptoKey = null;
+      if (track.encryption) {
+        onProgress(done, totalSegs, `Fetching encryption key${label}...`);
+        const init = track.encryption.keyUri.includes('svc.ms') && videoSpopActoken
+          ? { signal, headers: { 'x-spopactoken': videoSpopActoken } }
+          : { signal };
+        const keyResp = await fetch(track.encryption.keyUri, init);
+        if (!keyResp.ok) throw new Error(`Encryption key fetch failed: HTTP ${keyResp.status}`);
+        const keyBuf = await keyResp.arrayBuffer();
+        cryptoKey = await crypto.subtle.importKey('raw', keyBuf, { name: 'AES-CBC' }, false, ['decrypt']);
+      }
+
+      async function decryptIfNeeded(buf) {
+        if (!cryptoKey) return buf;
+        return await crypto.subtle.decrypt({ name: 'AES-CBC', iv: track.encryption.iv }, cryptoKey, buf);
+      }
+
+      // Init segment must come first — fetch sequentially before media
+      // segments. Plain fetch (no custom headers, no credentials): segments
+      // are now served from the same origin as the page via the manifest's
+      // <BaseURL>, so cookies + ambient session are sufficient.
       if (track.initUrl) {
         onProgress(done, totalSegs, `Fetching init segment${label}...`);
+        console.debug('[Transcript Downloader] Init segment URL:', track.initUrl);
         const r = await fetch(track.initUrl, { signal });
-        if (!r.ok) throw new Error(`Init segment failed: HTTP ${r.status}`);
-        initBufs.push(await r.arrayBuffer());
+        if (!r.ok) throw new Error(`Init segment failed: HTTP ${r.status} for ${track.initUrl}`);
+        initBufs.push(await decryptIfNeeded(await r.arrayBuffer()));
         done++;
       }
 
@@ -725,11 +842,13 @@
             }
             const idx = qIdx++;
             inFlight++;
+            if (idx === 0) console.debug('[Transcript Downloader] First media segment URL:', track.segments[idx]);
             fetch(track.segments[idx], { signal })
               .then(r => {
-                if (!r.ok) throw new Error(`Segment ${idx + 1} failed: HTTP ${r.status}`);
+                if (!r.ok) throw new Error(`Segment ${idx + 1} failed: HTTP ${r.status} for ${track.segments[idx]}`);
                 return r.arrayBuffer();
               })
+              .then(decryptIfNeeded)
               .then(buf => {
                 segBufs[idx] = buf;
                 done++;
@@ -1267,13 +1386,35 @@
 
   async function triggerBrowserVideoDownload(format, filename, onProgress, signal) {
     onProgress(0, 1, 'Fetching manifest...');
-    const resp = await fetch(videoManifestUrl, { signal });
+    const resp = await fetch(videoManifestUrl, svcMsFetchInit({ signal }));
     if (!resp.ok) throw new Error(`Manifest fetch failed: HTTP ${resp.status}`);
     const xmlText = await resp.text();
 
     onProgress(0, 1, 'Parsing manifest...');
     const allTracks = parseDashManifest(xmlText, videoManifestUrl);
     if (!allTracks.length) throw new Error('No tracks found in manifest');
+
+    // Detect TRUE hard-DRM (Widevine / PlayReady / FairPlay) via the
+    // ContentProtection schemeIdUri UUIDs. We DON'T fail on bare
+    // <ContentProtection> presence — Microsoft applies DASH-SEA (AES-128-CBC
+    // with HTTP-fetchable keys, schemeIdUri="urn:mpeg:dash:sea:..." ) to
+    // SharePoint Stream videos, which IS still client-decryptable (just not
+    // yet implemented here). Only hard CDM-required schemes are unrecoverable.
+    const HARD_DRM_SCHEMES = [
+      'edef8ba9-79d6-4ace-a3c8-27dcd51d21ed', // Widevine
+      '9a04f079-9840-4286-ab92-e65be0885f95', // PlayReady
+      '94ce86fb-07ff-4f43-adb8-93d2fa968ca2'  // FairPlay
+    ];
+    const cpSchemes = [...xmlText.matchAll(/<ContentProtection\b[^>]*schemeIdUri="([^"]+)"/gi)]
+      .map(m => m[1].toLowerCase());
+    const hasHardDrm = cpSchemes.some(s =>
+      HARD_DRM_SCHEMES.some(uuid => s.includes(uuid))
+    );
+    if (hasHardDrm) {
+      const err = new Error('DRM_PROTECTED');
+      err.isDrm = true;
+      throw err;
+    }
 
     const videoTrack = allTracks.find(t => t.type === 'video' || t.type === 'muxed');
     const audioTrack = allTracks.find(t => t.type === 'audio');
@@ -1306,6 +1447,275 @@
       const ext = format === 'audio-m4a' ? '.m4a' : '.mp4';
       downloadDecryptedFile(trackData[0], safeFilename + ext);
       onProgress(1, 1, 'Download complete!');
+    }
+  }
+
+  // Surface DRM rejection as a prominent full-screen modal rather than the
+  // small inline status line. Microsoft is rolling encryption out to SharePoint
+  // Stream videos; once it's on, neither the browser nor any client-side tool
+  // can produce a playable file without a DRM licence we can't obtain.
+  function showDrmWarning() {
+    let overlay = document.getElementById('ttdDrmWarningOverlay');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.id = 'ttdDrmWarningOverlay';
+      overlay.innerHTML = `
+        <div class="ttd-drm-dialog" role="alertdialog" aria-labelledby="ttdDrmTitle">
+          <div class="ttd-drm-icon" aria-hidden="true">&#128274;</div>
+          <h2 id="ttdDrmTitle">This video is DRM-protected</h2>
+          <p>Microsoft has applied <strong>encryption</strong> to this SharePoint Stream video. The bytes the CDN returns are AES-encrypted and can only be decrypted by the browser's built-in DRM module during playback.</p>
+          <p><strong>It cannot be downloaded</strong> by this extension, by ffmpeg, by yt-dlp, or by any other client-side tool. There is no legitimate workaround.</p>
+          <p>If the owner intended this video to be downloadable, ask them to upload an unprotected copy or share via OneDrive directly.</p>
+          <div class="ttd-drm-actions">
+            <button type="button" id="ttdDrmDismiss">OK</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(overlay);
+      const dismiss = () => overlay.classList.remove('show');
+      overlay.querySelector('#ttdDrmDismiss').addEventListener('click', dismiss);
+      overlay.addEventListener('click', (e) => { if (e.target === overlay) dismiss(); });
+    }
+    overlay.classList.add('show');
+  }
+
+  // Surface "transcript not available" as a modal that distinguishes the two
+  // cases the user actually cares about:
+  //   - status='none'    -> SharePoint confirmed no transcript exists for this
+  //                         recording. The meeting was never transcribed (or
+  //                         transcription is still processing for very recent
+  //                         recordings). Nothing the user can do client-side.
+  //   - status='unknown' -> we couldn't determine it (missing context, API
+  //                         denied us, or unexpected response shape). The user
+  //                         can usually fix this by opening the Transcript
+  //                         panel on the page so the intercept hook captures
+  //                         the metadata directly.
+  function showNoTranscriptWarning(status) {
+    let overlay = document.getElementById('ttdNoTranscriptOverlay');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.id = 'ttdNoTranscriptOverlay';
+      overlay.innerHTML = `
+        <div class="ttd-info-dialog" role="alertdialog" aria-labelledby="ttdNoTxTitle">
+          <div class="ttd-info-icon" aria-hidden="true">&#128172;</div>
+          <h2 id="ttdNoTxTitle"></h2>
+          <div id="ttdNoTxBody"></div>
+          <div class="ttd-info-actions">
+            <button type="button" id="ttdNoTxDismiss">OK</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(overlay);
+      const dismiss = () => overlay.classList.remove('show');
+      overlay.querySelector('#ttdNoTxDismiss').addEventListener('click', dismiss);
+      overlay.addEventListener('click', (e) => { if (e.target === overlay) dismiss(); });
+    }
+
+    const title = overlay.querySelector('#ttdNoTxTitle');
+    const body = overlay.querySelector('#ttdNoTxBody');
+    if (status === 'none') {
+      title.textContent = 'This meeting has no transcript';
+      body.innerHTML =
+        '<p>SharePoint Stream confirms <strong>no transcript was generated</strong> for this recording.</p>' +
+        '<p>Common reasons:</p>' +
+        '<p>&bull; The meeting organiser didn\'t enable transcription before the call started.<br>' +
+        '&bull; The recording is very recent and transcription is still processing &mdash; try again in a few minutes.<br>' +
+        '&bull; The video isn\'t a meeting recording (e.g. it\'s a plain uploaded MP4), and was never sent through Stream\'s transcription pipeline.</p>' +
+        '<p>There is nothing to download.</p>';
+    } else {
+      title.textContent = 'Couldn\'t find a transcript';
+      body.innerHTML =
+        '<p>We weren\'t able to confirm whether this video has a transcript.</p>' +
+        '<p><strong>Was this meeting transcribed?</strong> If you\'re not sure, try this:</p>' +
+        '<p>&bull; Open the <strong>Transcript</strong> tab/panel on the video.<br>' +
+        '&bull; If text appears, close this dialog and click Download Transcript again &mdash; we\'ll pick the URL up automatically.<br>' +
+        '&bull; If the Transcript tab is missing or empty, the meeting wasn\'t transcribed and there\'s nothing to download.</p>';
+    }
+    overlay.classList.add('show');
+  }
+
+  // ============================================================================
+  // Floating Widget (UI-agnostic fallback for new MS Stream UI)
+  // ============================================================================
+  //
+  // Microsoft has been migrating SharePoint Stream to a new UI that no longer
+  // exposes `#downloadTranscript` or `.ms-CommandBar-primaryCommand`, so the
+  // legacy contextual injections silently no-op. The floating widget is a
+  // fixed-position fallback that does not depend on Microsoft's DOM. It hides
+  // each button when the corresponding legacy injection has succeeded, so users
+  // on the classic UI keep the contextual buttons they're used to.
+
+  function injectFloatingWidget() {
+    if (document.getElementById('ttdFloatingWidget')) return true;
+    if (!document.body) return false;
+
+    if (!document.querySelector('#ttd-floating-styles')) {
+      const style = document.createElement('style');
+      style.id = 'ttd-floating-styles';
+      style.textContent = `
+        #ttdFloatingWidget {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          z-index: 2147483600;
+          display: flex;
+          flex-direction: row;
+          justify-content: flex-end;
+          gap: 8px;
+          padding: 6px 16px;
+          background: rgba(28, 28, 30, 0.92);
+          backdrop-filter: blur(8px);
+          -webkit-backdrop-filter: blur(8px);
+          border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+          box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        .ttd-floating-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 6px 14px 6px 10px;
+          border-radius: 6px;
+          border: 1px solid rgba(255,255,255,0.25);
+          color: #fff;
+          font-size: 13px;
+          font-weight: 600;
+          letter-spacing: 0.2px;
+          cursor: pointer;
+          box-shadow: 0 1px 2px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.18);
+          transition: transform 0.12s ease, filter 0.12s ease, opacity 0.15s ease, box-shadow 0.12s ease;
+          line-height: 1.2;
+          height: 30px;
+          text-shadow: 0 1px 1px rgba(0,0,0,0.15);
+        }
+        .ttd-floating-btn:hover {
+          transform: translateY(-1px);
+          filter: brightness(1.06);
+          box-shadow: 0 2px 4px rgba(0,0,0,0.22), 0 4px 12px rgba(0,0,0,0.22);
+        }
+        .ttd-floating-btn:active { transform: translateY(0); box-shadow: 0 1px 2px rgba(0,0,0,0.18); }
+        .ttd-floating-btn[data-feature="transcript"] {
+          background: linear-gradient(135deg, #5b67e0 0%, #6a4ba0 100%);
+        }
+        .ttd-floating-btn[data-feature="video"] {
+          background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+        }
+        .ttd-floating-btn[data-state="waiting"] {
+          opacity: 0.55;
+          cursor: progress;
+        }
+        .ttd-floating-btn .ttd-dl-arrow {
+          flex: 0 0 auto;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 20px;
+          height: 20px;
+          border-radius: 4px;
+          background: rgba(255,255,255,0.22);
+        }
+        .ttd-floating-btn .ttd-dl-arrow svg {
+          display: block;
+          width: 12px;
+          height: 12px;
+          fill: #fff;
+        }
+        .ttd-floating-btn .ttd-dl-label { white-space: nowrap; }
+      `;
+      document.head.appendChild(style);
+    }
+
+    const widget = document.createElement('div');
+    widget.id = 'ttdFloatingWidget';
+    widget.innerHTML = `
+      <button class="ttd-floating-btn" data-feature="transcript" data-state="waiting" type="button">
+        <span class="ttd-dl-arrow">${DL_SVG}</span><span class="ttd-dl-label">Download transcript</span>
+      </button>
+      <button class="ttd-floating-btn" data-feature="video" data-state="waiting" type="button">
+        <span class="ttd-dl-arrow">${DL_SVG}</span><span class="ttd-dl-label">Download video</span>
+      </button>
+    `;
+    document.body.appendChild(widget);
+
+    widget.querySelector('[data-feature="transcript"]').addEventListener('click', handleDownloadClick);
+    widget.querySelector('[data-feature="video"]').addEventListener('click', handleVideoDownloadClick);
+
+    updateFloatingWidgetState();
+    return true;
+  }
+
+  // Heuristic: is this page actually a SharePoint Stream / Teams video viewer?
+  // The content-script's manifest match pattern is `*.sharepoint.com/*`, which
+  // also covers Word/Excel/PowerPoint viewers and the file-browser — places
+  // where the floating download widget makes no sense. Gate visibility so the
+  // widget only appears on pages that are plausibly a video.
+  function isLikelyVideoPage() {
+    const loc = window.location;
+    const path = (loc.pathname || '').toLowerCase();
+    const search = (loc.search || '').toLowerCase();
+
+    // SharePoint Stream / OneDrive video viewer.
+    if (path.includes('/stream.aspx')) return true;
+    // SharePoint embed page pointing at a video file.
+    if (path.includes('/embed.aspx') && /\.(mp4|m4v|mov|webm|avi|mkv)/.test(search)) return true;
+    // Teams hosts always host video content somewhere in the shell; the legacy
+    // injection already gates on a command-bar element, so being permissive
+    // here is OK — the buttons remain in "waiting" state until a manifest is
+    // actually captured.
+    if (/^teams\./.test(loc.hostname)) return true;
+    return false;
+  }
+
+  // Toggle each floating button's visibility based on whether the legacy
+  // contextual button is present (hide if legacy succeeded), whether we're on
+  // a page that could plausibly have video/transcript content, and reflect
+  // the capture status (waiting/ready) for tooltip-style hinting.
+  function updateFloatingWidgetState() {
+    const widget = document.getElementById('ttdFloatingWidget');
+    if (!widget) return;
+
+    const tBtn = widget.querySelector('[data-feature="transcript"]');
+    const vBtn = widget.querySelector('[data-feature="video"]');
+    const onVideoPage = isLikelyVideoPage();
+
+    // Each button shows when: legacy not present AND (we're on a video page
+    // OR we've already captured the corresponding resource). The second clause
+    // means we won't accidentally hide a button on a page our heuristic missed
+    // — if intercept.js captured a manifest, we know it's a video page.
+    let anyVisible = false;
+
+    if (tBtn) {
+      const legacyTranscript = document.querySelector('#customDownloadTranscript');
+      const show = !legacyTranscript && (onVideoPage || !!transcriptUrl);
+      tBtn.style.display = show ? '' : 'none';
+      if (show) anyVisible = true;
+      tBtn.setAttribute('data-state', transcriptUrl ? 'ready' : 'waiting');
+      tBtn.title = transcriptUrl
+        ? 'Download transcript'
+        : 'Transcript URL not yet captured — open the Transcript panel or click to try fetching it';
+    }
+    if (vBtn) {
+      const legacyVideo = document.querySelector('#customDownloadVideo');
+      const show = !legacyVideo && (onVideoPage || !!videoManifestUrl);
+      vBtn.style.display = show ? '' : 'none';
+      if (show) anyVisible = true;
+      vBtn.setAttribute('data-state', videoManifestUrl ? 'ready' : 'waiting');
+      vBtn.title = videoManifestUrl
+        ? 'Download video'
+        : 'Video manifest URL not yet captured — start playback or wait a moment';
+    }
+
+    // Hide the wrapper entirely when no button is visible so it doesn't appear
+    // as an empty pill on Word/Excel/PowerPoint pages. When visible, the
+    // widget is a full-width top banner — push body content down by exactly
+    // the widget's height so SharePoint's UI isn't covered.
+    widget.style.display = anyVisible ? '' : 'none';
+    if (anyVisible) {
+      const h = widget.offsetHeight || 44;
+      document.body.style.paddingTop = h + 'px';
+    } else {
+      document.body.style.paddingTop = '';
     }
   }
 
@@ -1372,13 +1782,83 @@
     btn.setAttribute('role', 'menuitem');
     btn.setAttribute('aria-label', 'Download Video');
     btn.setAttribute('data-is-focusable', 'true');
-    btn.innerHTML = '<span>Download Video</span>';
+    // Match the floating widget's affordance — arrow-into-tray icon then label.
+    btn.innerHTML = `
+      <span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:4px;background:rgba(255,255,255,0.22);margin-right:6px;vertical-align:middle;">
+        <span style="display:inline-block;width:12px;height:12px;line-height:0;">${DL_SVG.replace('<svg', '<svg style="display:block;width:12px;height:12px;fill:#fff;"')}</span>
+      </span>
+      <span style="vertical-align:middle;">Download Video</span>
+    `;
     btn.addEventListener('click', handleVideoDownloadClick);
 
     newContainer.appendChild(btn);
     commandBar.appendChild(newContainer);
 
     console.debug('[Transcript Downloader] Video download button injected into command bar');
+
+    // Also drop the transcript button into the command bar right next to the
+    // video button so both live inline together (instead of leaving the
+    // transcript button stranded in the floating widget overlay).
+    injectTranscriptIntoCommandBar(commandBar, templateItem);
+
+    return true;
+  }
+
+  // Sibling injection: places a "Download Transcript" button into the same
+  // command-bar OverflowSet right after the video button. Bails if a legacy
+  // transcript button (#customDownloadTranscript) already exists from the
+  // older `injectDownloadButton()` path that targets `#downloadTranscript`.
+  function injectTranscriptIntoCommandBar(commandBar, templateItem) {
+    if (document.querySelector('#customDownloadTranscript')) return false;
+    if (!commandBar || !templateItem) return false;
+
+    if (!document.querySelector('#transcript-cmdbar-styles')) {
+      const style = document.createElement('style');
+      style.id = 'transcript-cmdbar-styles';
+      style.textContent = `
+        #customDownloadTranscript {
+          background: linear-gradient(135deg, #5b67e0 0%, #6a4ba0 100%) !important;
+          color: white !important;
+          border: none !important;
+          transition: background 0.3s ease !important;
+          cursor: pointer !important;
+          padding: 0 8px !important;
+          height: 32px !important;
+          border-radius: 4px !important;
+          font-size: 13px !important;
+          font-weight: 600 !important;
+          margin: 0 4px !important;
+          display: inline-flex !important;
+          align-items: center !important;
+        }
+        #customDownloadTranscript:hover {
+          background: linear-gradient(135deg, #6a4ba0 0%, #5b67e0 100%) !important;
+        }
+      `;
+      document.head.appendChild(style);
+    }
+
+    const newContainer = document.createElement('div');
+    newContainer.className = templateItem.className;
+    newContainer.setAttribute('role', 'none');
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.id = 'customDownloadTranscript';
+    btn.setAttribute('role', 'menuitem');
+    btn.setAttribute('aria-label', 'Download Transcript');
+    btn.setAttribute('data-is-focusable', 'true');
+    btn.innerHTML = `
+      <span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:4px;background:rgba(255,255,255,0.22);margin-right:6px;vertical-align:middle;">
+        <span style="display:inline-block;width:12px;height:12px;line-height:0;">${DL_SVG.replace('<svg', '<svg style="display:block;width:12px;height:12px;fill:#fff;"')}</span>
+      </span>
+      <span style="vertical-align:middle;">Download Transcript</span>
+    `;
+    btn.addEventListener('click', handleDownloadClick);
+
+    newContainer.appendChild(btn);
+    commandBar.appendChild(newContainer);
+    console.debug('[Transcript Downloader] Transcript button injected into command bar');
     return true;
   }
 
@@ -1404,6 +1884,12 @@
   function buildDownloadCommand(manifestUrl, filename, format, tool) {
     const safeFilename = filename.replace(/[^a-z0-9_\s-]/gi, '_');
 
+    // Microsoft's .svc.ms CDN now requires the `x-spopactoken` bearer alongside
+    // the URL-signed P1-P4 tokens (TempAuthRemoval rollout). Without it the
+    // manifest fetch returns HTTP 401 (NoAccessToken). Inject the captured
+    // token as a custom header so the CLI tools can authenticate.
+    const tokenHeader = videoSpopActoken ? `X-Spopactoken: ${videoSpopActoken}` : '';
+
     const ffmpegCommands = {
       'video-audio': { flags: '-map 0:v:0 -map 0:a:0 -c copy', ext: '.mp4' },
       'audio-m4a':   { flags: '-map 0:a:0 -vn -c:a copy',      ext: '.m4a' },
@@ -1413,7 +1899,6 @@
     };
 
     if (tool === 'yt-dlp') {
-      // yt-dlp with parallel fragment downloading (-N 16)
       const ytdlpFormats = {
         'video-audio': { flags: '-N 16',                                    ext: '.mp4' },
         'audio-m4a':   { flags: '-N 16 -x --audio-format m4a',             ext: '.m4a' },
@@ -1423,13 +1908,16 @@
       };
       const config = ytdlpFormats[format];
       if (!config) return '';
-      return `yt-dlp ${config.flags} -o "${safeFilename}${config.ext}" "${manifestUrl}"`;
+      const ytdlpHeader = tokenHeader ? `--add-header "${tokenHeader}" ` : '';
+      return `yt-dlp ${ytdlpHeader}${config.flags} -o "${safeFilename}${config.ext}" "${manifestUrl}"`;
     }
 
-    // Default: ffmpeg
+    // Default: ffmpeg. -headers must precede -i. ffmpeg accepts a single header
+    // value without a trailing CRLF.
     const config = ffmpegCommands[format];
     if (!config) return '';
-    return `ffmpeg -i "${manifestUrl}" ${config.flags} "${safeFilename}${config.ext}"`;
+    const ffmpegHeader = tokenHeader ? `-headers "${tokenHeader}" ` : '';
+    return `ffmpeg ${ffmpegHeader}-i "${manifestUrl}" ${config.flags} "${safeFilename}${config.ext}"`;
   }
 
   function createVideoModal() {
@@ -1609,9 +2097,27 @@
       } catch (err) {
         if (err.name === 'AbortError') {
           status.textContent = 'Download cancelled.';
+        } else if (err.isDrm) {
+          // DRM is a hard stop, not an inline error — show the loud popup and
+          // reset the progress UI so the user isn't left looking at a half-bar.
+          console.error('[Transcript Downloader] DRM-protected video — cannot download');
+          status.textContent = 'DRM-protected — cannot download.';
+          bar.classList.add('browser-dl-error');
+          showDrmWarning();
         } else {
           console.error('[Transcript Downloader] Browser download error:', err);
-          status.textContent = 'Error: ' + err.message;
+          let msg = err.message || String(err);
+          // Translate the opaque "TypeError: Failed to fetch" from a CORS-blocked
+          // segment into something actionable. Common cause: SharePoint Stream
+          // tenant policy or guest-viewer session refusing cross-origin segment
+          // fetches; the in-tenant player still works because it uses cookies +
+          // EME, neither of which a content-script can replicate.
+          if (err.name === 'TypeError' && /failed to fetch/i.test(msg)) {
+            msg = 'Browser blocked the segment fetch (cross-origin / CORS). ' +
+                  'Common when viewing a video as a guest or in a tenant with strict CDN policies. ' +
+                  'The native SharePoint player works because it uses the browser\'s DRM module — that path is not available to extensions.';
+          }
+          status.textContent = 'Error: ' + msg;
           bar.classList.add('browser-dl-error');
         }
       } finally {
@@ -1728,21 +2234,28 @@
 
   // Monitor for transcript page and inject buttons
   function initialize() {
+    injectFloatingWidget();
+
     let transcriptDone = injectDownloadButton();
     let videoDone = injectVideoDownloadButton();
+    updateFloatingWidgetState();
 
     if (transcriptDone && videoDone) {
-      console.debug('[Transcript Downloader] Both buttons injected on initial load');
+      console.debug('[Transcript Downloader] Both legacy buttons injected on initial load');
       return;
     }
 
-    // Watch for DOM changes until both buttons are injected
-    const observer = new MutationObserver((mutations) => {
+    // Watch for DOM changes until both legacy buttons are injected (or timeout)
+    const observer = new MutationObserver(() => {
+      // Re-attempt floating widget if document.body wasn't ready earlier
+      if (!document.getElementById('ttdFloatingWidget')) injectFloatingWidget();
+
       if (!transcriptDone) transcriptDone = injectDownloadButton();
       if (!videoDone) videoDone = injectVideoDownloadButton();
+      updateFloatingWidgetState();
 
       if (transcriptDone && videoDone) {
-        console.debug('[Transcript Downloader] Both buttons injected after DOM change');
+        console.debug('[Transcript Downloader] Both legacy buttons injected after DOM change');
         observer.disconnect();
       }
     });
@@ -1756,6 +2269,16 @@
       observer.disconnect();
       console.debug('[Transcript Downloader] Stopped observing after timeout');
     }, 30000);
+
+    // Self-healing watchdog: MS Stream / SharePoint shells re-hydrate and
+    // sometimes wipe the floating widget after the MutationObserver above has
+    // stopped. A cheap periodic check (every 2s) ensures it comes back. Also
+    // re-runs updateFloatingWidgetState so positioning catches up if a legacy
+    // command bar appears late.
+    setInterval(() => {
+      if (!document.getElementById('ttdFloatingWidget')) injectFloatingWidget();
+      else updateFloatingWidgetState();
+    }, 2000);
   }
 
   // Wait for page to be ready
