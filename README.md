@@ -27,17 +27,19 @@ Works on:
 
 ## Screenshots
 
-### Video download modal
-
-![Video Download in Browser](screenshots/Example_Browser.png)
+> Light-mode versions live next to these in `demo-website/src/assets/screenshots/light/`.
 
 ### Teams / SharePoint recording page
 
-![Recording Webpage](screenshots/teams_recording_webpage.png)
+![Recording Webpage](demo-website/src/assets/screenshots/dark/recording.png)
+
+### Video download modal
+
+![Video Download Modal](demo-website/src/assets/screenshots/dark/video-modal.png)
 
 ### Transcript format modal
 
-![Format Selection Modal](screenshots/modal_popup_download_options.png)
+![Transcript Format Modal](demo-website/src/assets/screenshots/dark/transcript-modal.png)
 
 ## Installation
 

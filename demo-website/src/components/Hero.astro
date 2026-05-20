@@ -1,0 +1,146 @@
+---
+const CHROME_URL = 'https://chromewebstore.google.com/detail/ms-teams-transcript-downl/hmljlkhcebhkkhbbafiheolbneecoinp';
+const GH_URL = 'https://github.com/brendangooden/ms-teams-sharepoint-downloader';
+---
+<section id="top" class="relative">
+  <div class="mx-auto max-w-[1280px] px-6 lg:px-10 pt-14 lg:pt-24 pb-20 lg:pb-28">
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-16 items-start">
+
+      <!-- LEFT — editorial copy ───────────────────────────── -->
+      <div class="lg:col-span-7">
+        <p class="reveal reveal-1 section-num mb-8 flex flex-wrap gap-x-3 gap-y-1">
+          <span>[chrome extension]</span>
+          <span class="text-fg-faint">·</span>
+          <span>v1.3.0</span>
+          <span class="text-fg-faint">·</span>
+          <span>mit</span>
+          <span class="text-fg-faint">·</span>
+          <span class="text-green">open source</span>
+        </p>
+
+        <h1 class="reveal reveal-2 font-display text-[clamp(3.5rem,9vw,7.5rem)] leading-[0.92] tracking-[-0.025em]">
+          <span class="block">Download</span>
+          <span class="block italic text-red">disabled?</span>
+        </h1>
+
+        <p class="reveal reveal-3 mt-8 max-w-xl text-[15px] leading-[1.65] text-fg-dim">
+          Save Teams recordings, SharePoint MP4s, and transcripts straight from
+          your browser. No IT ticket. No server. No telemetry.
+        </p>
+
+        <div class="reveal reveal-4 mt-9 flex flex-wrap items-center gap-3">
+          <a href={CHROME_URL} target="_blank" rel="noopener" class="btn btn-primary">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0a12 12 0 0 1 10.39 6H12a6 6 0 0 0-5.2 9L2.46 7.5A12 12 0 0 1 12 0Zm-3 12a3 3 0 1 1 6 0 3 3 0 0 1-6 0Zm10.39 0A11.94 11.94 0 0 1 12 24l4.34-7.5a6 6 0 0 0 2.97-7.5h.08Zm-7.42 4.91L7.65 9.4A12 12 0 0 0 12 24a12 12 0 0 0 0-12c.4 0 .8.03 1.18.09l-2.21 4.82Z"/></svg>
+            <span>install on chrome</span>
+          </a>
+          <a href={GH_URL} target="_blank" rel="noopener" class="btn">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38v-1.34c-2.23.48-2.7-1.07-2.7-1.07-.36-.93-.89-1.18-.89-1.18-.73-.5.05-.49.05-.49.81.06 1.23.83 1.23.83.72 1.22 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.66 7.66 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.74.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+            <span>source on github</span>
+          </a>
+        </div>
+
+        <!-- Stat row -->
+        <dl class="reveal reveal-5 mt-12 grid grid-cols-2 sm:grid-cols-4 border border-border">
+          {[
+            { k: '03', v: 'download tools', accent: 'red' },
+            { k: '05', v: 'video formats', accent: 'red' },
+            { k: '03', v: 'transcript formats', accent: 'purple' },
+            { k: '00', v: 'trackers', accent: 'green' },
+          ].map((s) => (
+            <div class="px-4 py-4 border-r last:border-r-0 border-border odd:border-b sm:odd:border-b-0 even:border-b sm:even:border-b-0">
+              <dt class={`font-display text-[2.5rem] leading-none ${s.accent === 'red' ? 'text-red' : s.accent === 'purple' ? 'text-purple' : 'text-green'}`}>
+                {s.k}
+              </dt>
+              <dd class="mt-1.5 text-[11px] uppercase tracking-[0.1em] text-fg-faint">{s.v}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+
+      <!-- RIGHT — cycling terminal ──────────────────────── -->
+      <div class="lg:col-span-5 reveal reveal-3">
+        <div class="terminal-cycle">
+
+          <!-- TERMINAL 1: yt-dlp -->
+          <div class="terminal">
+            <div class="terminal-bar">
+              <span class="terminal-dot" style="background: var(--red)"></span>
+              <span class="terminal-dot"></span>
+              <span class="terminal-dot"></span>
+              <span class="ml-2">~ ms-stream &mdash; yt-dlp</span>
+            </div>
+            <pre class="terminal-body"><span class="term-cmd">~ $</span> ms-stream
+
+<span class="term-arrow">▸</span> <span class="term-key">detected  </span> <span class="term-val">SharePoint recording</span>
+<span class="term-arrow">▸</span> <span class="term-key">duration  </span> <span class="term-val">00:47:13</span>
+<span class="term-arrow">▸</span> <span class="term-key">segments  </span> <span class="term-val">1,412</span>
+<span class="term-arrow">▸</span> <span class="term-key">encryption</span> <span class="term-val">SEA</span> <span class="term-comment">— auto-decrypting</span>
+
+<span class="term-arrow">▸</span> <span class="term-comment">generated yt-dlp command (parallel ×16):</span>
+
+  <span class="term-cmd">yt-dlp</span> -N 16 \
+    --add-header <span class="term-val">"Authorization: Bearer eyJ0e..."</span> \
+    <span class="term-val">"https://contoso.sharepoint.com/.../manifest.m3u8"</span> \
+    -o <span class="term-val">"ai-roadmap-2026-03-27.mp4"</span>
+
+<span class="term-arrow">▸</span> <span class="term-comment">ready — paste into terminal</span><span class="term-cursor"></span></pre>
+          </div>
+
+          <!-- TERMINAL 2: ffmpeg -->
+          <div class="terminal">
+            <div class="terminal-bar">
+              <span class="terminal-dot" style="background: var(--red)"></span>
+              <span class="terminal-dot"></span>
+              <span class="terminal-dot"></span>
+              <span class="ml-2">~ ms-stream &mdash; ffmpeg</span>
+            </div>
+            <pre class="terminal-body"><span class="term-cmd">~ $</span> ms-stream
+
+<span class="term-arrow">▸</span> <span class="term-key">detected  </span> <span class="term-val">Teams meeting recording</span>
+<span class="term-arrow">▸</span> <span class="term-key">duration  </span> <span class="term-val">01:02:08</span>
+<span class="term-arrow">▸</span> <span class="term-key">segments  </span> <span class="term-val">1,863</span>
+<span class="term-arrow">▸</span> <span class="term-key">audio out </span> <span class="term-val">.mp3</span> <span class="term-comment">— re-encoded by ffmpeg</span>
+
+<span class="term-arrow">▸</span> <span class="term-comment">generated ffmpeg command:</span>
+
+  <span class="term-cmd">ffmpeg</span> \
+    -headers <span class="term-val">"Authorization: Bearer eyJ0e..."</span> \
+    -i <span class="term-val">"https://contoso.sharepoint.com/.../manifest.m3u8"</span> \
+    -vn -c:a libmp3lame -b:a 192k \
+    <span class="term-val">"weekly-standup.mp3"</span>
+
+<span class="term-arrow">▸</span> <span class="term-comment">ready — paste into terminal</span><span class="term-cursor"></span></pre>
+          </div>
+
+          <!-- TERMINAL 3: in-browser -->
+          <div class="terminal">
+            <div class="terminal-bar">
+              <span class="terminal-dot" style="background: var(--purple)"></span>
+              <span class="terminal-dot"></span>
+              <span class="terminal-dot"></span>
+              <span class="ml-2">~ ms-stream &mdash; in-browser</span>
+            </div>
+            <pre class="terminal-body"><span class="term-cmd">~ $</span> ms-stream
+
+<span class="term-arrow">▸</span> <span class="term-key">detected  </span> <span class="term-val">Stream-on-SharePoint</span>
+<span class="term-arrow">▸</span> <span class="term-key">duration  </span> <span class="term-val">00:23:41</span>
+<span class="term-arrow">▸</span> <span class="term-key">segments  </span> <span class="term-val">713</span>
+<span class="term-arrow">▸</span> <span class="term-key">encryption</span> <span class="term-val">SEA</span> <span class="term-comment">— auto-decrypting</span>
+
+<span class="term-arrow">▸</span> <span class="term-comment">downloading in-browser...</span>
+
+  <span class="term-purple">▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▱▱▱▱</span>  <span class="term-val">81%</span>
+  <span class="term-key">667.0 MB / 823.1 MB · 38 MB/s</span>
+
+<span class="term-arrow">▸</span> <span class="term-comment">→ ~/Downloads/team-stream.mp4</span><span class="term-cursor"></span></pre>
+          </div>
+        </div>
+
+        <p class="mt-3 text-[11px] text-fg-faint flex items-center gap-2">
+          <span class="inline-block w-1.5 h-1.5 rounded-full" style="background: var(--green); box-shadow: 0 0 8px var(--green)"></span>
+          live preview &mdash; cycles through all three download tools
+        </p>
+      </div>
+    </div>
+  </div>
+</section>

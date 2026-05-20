@@ -1,0 +1,65 @@
+---
+const faqs = [
+  {
+    q: 'Why is Download disabled in Teams?',
+    a: 'Tenant admins turn it off org-wide; meeting organisers can also toggle it per meeting. The recording itself isn\'t locked — just the convenience button is hidden.',
+  },
+  {
+    q: 'Does this bypass access restrictions?',
+    a: 'No. It runs as you, against your own session. If you can\'t play it natively, you can\'t download it.',
+  },
+  {
+    q: 'Will it work on DRM-protected recordings?',
+    a: 'No, and no tool does. Widevine/PlayReady decrypt only inside the browser\'s DRM module. The extension detects it and shows a clear dialog.',
+  },
+  {
+    q: 'Do I need ffmpeg or yt-dlp?',
+    a: 'Only for MP3/WAV, or for parallel downloads on long recordings. The default in-browser path handles MP4 and M4A with no external tools.',
+  },
+  {
+    q: 'Is anything sent to a third-party server?',
+    a: 'No. Zero telemetry. The extension talks to Microsoft URLs and nothing else.',
+  },
+  {
+    q: 'What about Firefox?',
+    a: 'Chrome and Edge only for now. Firefox port is on the longer-term list.',
+  },
+  {
+    q: 'What if the meeting was never transcribed?',
+    a: 'The transcript button shows a clear "no transcript available" dialog. No silent failure.',
+  },
+  {
+    q: 'Is it free?',
+    a: 'Yes. MIT-licensed, open source, no premium tier, no upsell.',
+  },
+  {
+    q: 'How do I uninstall?',
+    a: 'chrome://extensions → Remove. The only stored data is your last-used transcript format, wiped on uninstall.',
+  },
+];
+---
+<section id="faq" class="hairline">
+  <div class="mx-auto max-w-[1280px] px-6 lg:px-10 py-20 lg:py-28">
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-10 mb-14">
+      <div class="lg:col-span-4">
+        <p class="section-num">07 / faq</p>
+      </div>
+      <div class="lg:col-span-8">
+        <div class="border border-border">
+          {faqs.map((f, i) => (
+            <details class="group border-b last:border-b-0 border-border" open={i === 0}>
+              <summary class="cursor-pointer px-6 py-5 flex items-start gap-5 text-fg list-none hover:bg-bg-elev transition-colors">
+                <span class="section-num shrink-0 mt-1">{String(i + 1).padStart(2, '0')}</span>
+                <span class="flex-1 text-[14px] leading-[1.5]">{f.q}</span>
+                <span class="text-red shrink-0 mt-1 group-open:rotate-45 transition-transform inline-block">+</span>
+              </summary>
+              <div class="px-6 pb-5 pl-[3.875rem] text-[13px] text-fg-dim leading-[1.7] -mt-1">
+                {f.a}
+              </div>
+            </details>
+          ))}
+        </div>
+      </div>
+    </div>
+  </div>
+</section>

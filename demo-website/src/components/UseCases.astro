@@ -1,0 +1,37 @@
+---
+const cases = [
+  { who: 'Professionals', why: 'Archive the all-hands. Save the customer call before retention deletes it.' },
+  { who: 'Students &amp; educators', why: 'Save lectures for offline study. Build personal study packs.' },
+  { who: 'Accessibility', why: 'Personal copies for review at your own pace. Subtitle files for any local player.' },
+  { who: 'AI &amp; LLM workflows', why: 'Grouped-TXT is built for LLM input. Speaker-collapsed, clean blocks.' },
+  { who: 'Analysts &amp; researchers', why: 'Pull JSON into pandas. Cross-meeting search without paying a vendor.' },
+  { who: 'Content creators', why: 'Extract audio for podcasts. Pull subtitles for an edit.' },
+];
+---
+<section class="hairline">
+  <div class="mx-auto max-w-[1280px] px-6 lg:px-10 py-20 lg:py-28">
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-10 mb-14">
+      <div class="lg:col-span-4">
+        <p class="section-num">05 / for</p>
+      </div>
+      <div class="lg:col-span-8">
+        <h2 class="section-title">
+          Who actually uses this.
+        </h2>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 border border-border">
+      {cases.map((c, i) => (
+        <div class="p-6 border-b md:[&:nth-child(odd)]:border-r lg:[&:not(:nth-child(3n))]:border-r border-border">
+          <div class="flex items-center gap-3 mb-3">
+            <span class="text-fg-faint text-[11px]">{String(i + 1).padStart(2, '0')}</span>
+            <span class="h-px flex-1 bg-border"></span>
+          </div>
+          <h3 class="font-display text-[1.5rem] leading-tight text-fg" set:html={c.who}></h3>
+          <p class="mt-2 text-[13px] text-fg-dim leading-[1.55]" set:html={c.why}></p>
+        </div>
+      ))}
+    </div>
+  </div>
+</section>

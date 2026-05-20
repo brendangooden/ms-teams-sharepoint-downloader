@@ -1,0 +1,89 @@
+---
+import { getImage } from 'astro:assets';
+
+import darkRecording from '../assets/screenshots/dark/recording.png';
+import lightRecording from '../assets/screenshots/light/recording.png';
+import darkVideo from '../assets/screenshots/dark/video-modal.png';
+import lightVideo from '../assets/screenshots/light/video-modal.png';
+import darkTranscript from '../assets/screenshots/dark/transcript-modal.png';
+import lightTranscript from '../assets/screenshots/light/transcript-modal.png';
+
+const widths = [600, 1000, 1400, 1920];
+const sizes = '(min-width: 1280px) 1200px, (min-width: 768px) 90vw, 100vw';
+
+async function pair(dark: ImageMetadata, light: ImageMetadata) {
+  const [d, l] = await Promise.all([
+    getImage({ src: dark, widths, format: 'webp' }),
+    getImage({ src: light, widths, format: 'webp' }),
+  ]);
+  return { d, l, maxW: Math.min(1400, dark.width) };
+}
+
+const shots = [
+  {
+    ...(await pair(darkRecording, lightRecording)),
+    label: 'recording page',
+    caption: 'Red Download Video and purple Download Transcript buttons live in the SharePoint / Teams command bar.',
+  },
+  {
+    ...(await pair(darkVideo, lightVideo)),
+    label: 'video download',
+    caption: 'Three tools (in-browser · ffmpeg · yt-dlp) · five formats. Filename auto-derived, editable.',
+  },
+  {
+    ...(await pair(darkTranscript, lightTranscript)),
+    label: 'transcript',
+    caption: 'RAW JSON · WebVTT · Grouped TXT. Live previews. Last format remembered.',
+  },
+];
+---
+<section id="screenshots" class="hairline">
+  <div class="mx-auto max-w-[1280px] px-6 lg:px-10 py-20 lg:py-28">
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-10 mb-14">
+      <div class="lg:col-span-4">
+        <p class="section-num">04 / interface</p>
+      </div>
+      <div class="lg:col-span-8">
+        <h2 class="section-title">
+          Two buttons. <em>Where you'd look for them.</em>
+        </h2>
+      </div>
+    </div>
+
+    <div class="space-y-10">
+      {shots.map((s, i) => (
+        <figure class="border border-border bg-bg-elev mx-auto" style={`max-width: ${s.maxW}px`}>
+          <div class="px-4 py-2.5 border-b border-border flex items-center justify-between">
+            <span class="section-num">fig {String(i + 1).padStart(2, '0')}</span>
+            <span class="text-[11px] text-fg-dim">{s.label}</span>
+          </div>
+          <picture>
+            <source
+              srcset={s.l.srcSet.attribute}
+              sizes={sizes}
+              media="(prefers-color-scheme: light)"
+              type="image/webp"
+            />
+            <source
+              srcset={s.d.srcSet.attribute}
+              sizes={sizes}
+              type="image/webp"
+            />
+            <img
+              src={s.d.src}
+              alt={s.caption}
+              width={s.d.attributes.width}
+              height={s.d.attributes.height}
+              loading="lazy"
+              decoding="async"
+              class="block w-full h-auto"
+            />
+          </picture>
+          <figcaption class="px-5 py-3.5 border-t border-border text-[12.5px] text-fg-dim leading-[1.55]">
+            {s.caption}
+          </figcaption>
+        </figure>
+      ))}
+    </div>
+  </div>
+</section>

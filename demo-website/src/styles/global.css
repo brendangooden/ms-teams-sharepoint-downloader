@@ -1,0 +1,322 @@
+@import "tailwindcss";
+
+/* ─────────────────────────────────────────────────────────────
+   Design tokens — runtime CSS variables for theme swap
+   ───────────────────────────────────────────────────────────── */
+
+:root {
+  /* dark — default */
+  --bg: #0b0b0d;
+  --bg-elev: #131316;
+  --bg-deep: #08080a;
+  --border: #1f1f23;
+  --border-strong: #2a2a30;
+  --fg: #e8e6e0;
+  --fg-dim: #9a978f;
+  --fg-faint: #5a5852;
+  --red: #ff4f4f;
+  --red-soft: #ff4f4f1a;
+  --purple: #a78bfa;
+  --purple-soft: #a78bfa1a;
+  --green: #7fd99e;
+  --yellow: #f0c674;
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f5f1e6;
+    --bg-elev: #ebe6d4;
+    --bg-deep: #efeada;
+    --border: #d8d2bd;
+    --border-strong: #c2bba2;
+    --fg: #1a1614;
+    --fg-dim: #5a5246;
+    --fg-faint: #948c78;
+    --red: #c52424;
+    --red-soft: #c5242414;
+    --purple: #5d3fd3;
+    --purple-soft: #5d3fd314;
+    --green: #2d7d46;
+    --yellow: #8a6418;
+    color-scheme: light;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Tailwind theme — bind utilities to runtime vars
+   ───────────────────────────────────────────────────────────── */
+
+@theme {
+  --color-bg: var(--bg);
+  --color-bg-elev: var(--bg-elev);
+  --color-bg-deep: var(--bg-deep);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-fg: var(--fg);
+  --color-fg-dim: var(--fg-dim);
+  --color-fg-faint: var(--fg-faint);
+  --color-red: var(--red);
+  --color-red-soft: var(--red-soft);
+  --color-purple: var(--purple);
+  --color-purple-soft: var(--purple-soft);
+  --color-green: var(--green);
+  --color-yellow: var(--yellow);
+
+  --font-display: "Instrument Serif", ui-serif, Georgia, serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Code", Menlo, Consolas, monospace;
+  --font-sans: var(--font-mono);
+
+  --radius-xs: 2px;
+  --radius-sm: 3px;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Base
+   ───────────────────────────────────────────────────────────── */
+
+* {
+  border-color: var(--border);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  line-height: 1.6;
+  font-feature-settings: "ss01", "cv01", "cv02";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Subtle grid backdrop — visible in dark, near-invisible in light */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image:
+    linear-gradient(to right, var(--border) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--border) 1px, transparent 1px);
+  background-size: 64px 64px;
+  opacity: 0.35;
+  mask-image: radial-gradient(ellipse at top, black 0%, transparent 70%);
+  -webkit-mask-image: radial-gradient(ellipse at top, black 0%, transparent 70%);
+}
+
+main, footer, header {
+  position: relative;
+  z-index: 1;
+}
+
+::selection {
+  background: var(--red);
+  color: var(--bg);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Reusable patterns
+   ───────────────────────────────────────────────────────────── */
+
+.section-num {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--fg-faint);
+}
+
+.section-title {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: clamp(2.25rem, 5vw, 3.5rem);
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  color: var(--fg);
+}
+
+.section-title em {
+  font-style: italic;
+  color: var(--red);
+}
+
+.kbd {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elev);
+  padding: 1px 6px;
+  border-radius: 2px;
+}
+
+.hairline { border-top: 1px solid var(--border); }
+.hairline-b { border-bottom: 1px solid var(--border); }
+
+/* Button styles — square, mono, hairline */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1.125rem;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+  border: 1px solid var(--border-strong);
+  background: var(--bg);
+  color: var(--fg);
+  transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
+}
+.btn:hover { border-color: var(--fg); }
+.btn-primary {
+  background: var(--red);
+  border-color: var(--red);
+  color: #fff;
+}
+.btn-primary:hover { background: transparent; color: var(--red); }
+.btn-ghost { background: transparent; }
+
+/* ─────────────────────────────────────────────────────────────
+   Terminal — used in hero and CLI showcase
+   ───────────────────────────────────────────────────────────── */
+
+.terminal {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.6;
+  background: var(--bg-deep);
+  border: 1px solid var(--border);
+  color: var(--fg);
+}
+
+.terminal-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0.85rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--fg-faint);
+  letter-spacing: 0.06em;
+}
+
+.terminal-dot {
+  width: 9px;
+  height: 9px;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+}
+
+.terminal-body {
+  padding: 1rem 1.15rem;
+  white-space: pre;
+  overflow-x: auto;
+  font-variant-ligatures: none;
+  tab-size: 2;
+}
+
+.term-cmd { color: var(--green); }
+.term-arrow { color: var(--red); }
+.term-key { color: var(--fg-dim); }
+.term-val { color: var(--fg); }
+.term-comment { color: var(--fg-faint); font-style: italic; }
+.term-purple { color: var(--purple); }
+.term-cursor {
+  display: inline-block;
+  width: 7px;
+  height: 14px;
+  background: var(--fg);
+  vertical-align: -2px;
+  animation: blink 1.05s steps(2) infinite;
+}
+
+@keyframes blink {
+  50% { opacity: 0; }
+}
+
+/* Cycling terminals — CSS grid stacking */
+.terminal-cycle {
+  display: grid;
+  grid-template-areas: "stack";
+  position: relative;
+}
+.terminal-cycle > .terminal {
+  grid-area: stack;
+  opacity: 0;
+  animation: termCycle 21s infinite;
+}
+.terminal-cycle > .terminal:nth-child(1) { animation-delay: 0s; }
+.terminal-cycle > .terminal:nth-child(2) { animation-delay: 7s; }
+.terminal-cycle > .terminal:nth-child(3) { animation-delay: 14s; }
+
+@keyframes termCycle {
+  0%, 1% { opacity: 0; transform: translateY(6px); }
+  3%, 30% { opacity: 1; transform: translateY(0); }
+  33%, 100% { opacity: 0; transform: translateY(-6px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .terminal-cycle > .terminal { animation: none; opacity: 1; }
+  .terminal-cycle > .terminal:not(:first-child) { display: none; }
+  .term-cursor { animation: none; }
+}
+
+/* Hero entrance reveal */
+.reveal {
+  opacity: 0;
+  transform: translateY(8px);
+  animation: revealIn 700ms cubic-bezier(0.2, 0.7, 0.2, 1) forwards;
+}
+.reveal-1 { animation-delay: 60ms; }
+.reveal-2 { animation-delay: 180ms; }
+.reveal-3 { animation-delay: 300ms; }
+.reveal-4 { animation-delay: 420ms; }
+.reveal-5 { animation-delay: 540ms; }
+
+@keyframes revealIn {
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal { opacity: 1; transform: none; animation: none; }
+}
+
+/* Link underlines — subtle, on hover only */
+.lnk {
+  color: var(--fg);
+  text-decoration: none;
+  border-bottom: 1px solid var(--border-strong);
+  transition: border-color 120ms ease, color 120ms ease;
+}
+.lnk:hover { border-color: var(--red); color: var(--red); }
+
+/* ASCII rule between sections */
+.ascii-rule {
+  color: var(--fg-faint);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.4em;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+/* Container with hairline gutters that hint at a spec sheet */
+.gutter-rules {
+  position: relative;
+}
+.gutter-rules::before,
+.gutter-rules::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--border);
+}
+.gutter-rules::before { left: 0; }
+.gutter-rules::after { right: 0; }

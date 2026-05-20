@@ -1,0 +1,75 @@
+---
+const video = [
+  { t: 'In-browser', d: 'Video+Audio MP4, Audio M4A, or Video Only. No CLI needed.' },
+  { t: 'CLI generators', d: 'ffmpeg & yt-dlp commands ready to paste. yt-dlp goes parallel (-N 16).' },
+  { t: 'SEA encryption', d: "SharePoint's encrypted segments decrypted on the fly." },
+  { t: 'Five formats', d: '.mp4 (V+A) · .m4a · .mp3 · .wav · video-only.' },
+  { t: 'Editable filename', d: 'Auto-derived from the meeting title. Edit before save.' },
+  { t: 'Progress bar', d: 'Per-segment status. Cancellable. No corrupt partials.' },
+  { t: 'Floating banner', d: 'Appears when SharePoint hides the command bar.' },
+  { t: 'DRM detection', d: 'Widevine/PlayReady → clear dialog, never a broken file.' },
+];
+
+const transcript = [
+  { t: 'RAW JSON', d: 'Original MS Stream format. Speaker names, timestamps, entry IDs.' },
+  { t: 'WebVTT (.vtt)', d: 'Standard subtitle format. Plays in VLC, IINA, Plyr.' },
+  { t: 'Grouped TXT', d: 'Same-speaker lines collapsed. LLM-ready.' },
+  { t: 'Live preview', d: 'All three formats rendered before you pick.' },
+  { t: 'Speaker names', d: "Real display names preserved. Not anonymous GUIDs." },
+  { t: 'Last-format memory', d: "Picks up where you left off. Storage permission only." },
+  { t: 'No-transcript detection', d: "Clear dialog if there's no transcript." },
+  { t: 'Custom filename', d: 'Auto-derived. Editable before save.' },
+];
+---
+<section id="features" class="hairline">
+  <div class="mx-auto max-w-[1280px] px-6 lg:px-10 py-20 lg:py-28">
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-10 mb-14">
+      <div class="lg:col-span-4">
+        <p class="section-num">02 / features</p>
+      </div>
+      <div class="lg:col-span-8">
+        <h2 class="section-title">
+          <em>Video</em> and <em class="!text-purple">transcript</em> &mdash; two pipelines.
+        </h2>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 border border-border">
+      <div class="border-b lg:border-b-0 lg:border-r border-border">
+        <header class="px-6 py-5 border-b border-border flex items-baseline justify-between">
+          <h3 class="font-display text-[1.75rem] leading-none text-red">video &amp; audio</h3>
+          <span class="section-num">.mp4 · .m4a · .mp3 · .wav</span>
+        </header>
+        <ul>
+          {video.map((f, i) => (
+            <li class="px-6 py-4 border-b last:border-b-0 border-border flex gap-4">
+              <span class="text-fg-faint text-[11px] mt-1 w-6 shrink-0">{String(i + 1).padStart(2, '0')}</span>
+              <div>
+                <p class="text-fg font-medium text-[14px]">{f.t}</p>
+                <p class="text-fg-dim text-[13px] mt-0.5">{f.d}</p>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div>
+        <header class="px-6 py-5 border-b border-border flex items-baseline justify-between">
+          <h3 class="font-display text-[1.75rem] leading-none text-purple">transcript</h3>
+          <span class="section-num">.json · .vtt · .txt</span>
+        </header>
+        <ul>
+          {transcript.map((f, i) => (
+            <li class="px-6 py-4 border-b last:border-b-0 border-border flex gap-4">
+              <span class="text-fg-faint text-[11px] mt-1 w-6 shrink-0">{String(i + 1).padStart(2, '0')}</span>
+              <div>
+                <p class="text-fg font-medium text-[14px]">{f.t}</p>
+                <p class="text-fg-dim text-[13px] mt-0.5">{f.d}</p>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>

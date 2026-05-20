@@ -1,0 +1,80 @@
+---
+const GH_URL = 'https://github.com/brendangooden/ms-teams-sharepoint-downloader';
+const CHROME_URL = 'https://chromewebstore.google.com/detail/ms-teams-transcript-downl/hmljlkhcebhkkhbbafiheolbneecoinp';
+const year = new Date().getFullYear();
+---
+<footer class="hairline">
+  <div class="mx-auto max-w-[1280px] px-6 lg:px-10 py-14">
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-10 mb-14">
+      <div>
+        <p class="section-num mb-4">product</p>
+        <ul class="space-y-2 text-[13px]">
+          <li><a href={CHROME_URL} target="_blank" rel="noopener" class="lnk">Chrome Web Store</a></li>
+          <li><a href="#features" class="lnk">Features</a></li>
+          <li><a href="#cli" class="lnk">CLI tools</a></li>
+          <li><a href="#screenshots" class="lnk">Screenshots</a></li>
+        </ul>
+      </div>
+      <div>
+        <p class="section-num mb-4">project</p>
+        <ul class="space-y-2 text-[13px]">
+          <li><a href={GH_URL} target="_blank" rel="noopener" class="lnk">Source</a></li>
+          <li><a href={`${GH_URL}/issues`} target="_blank" rel="noopener" class="lnk">Issues</a></li>
+          <li><a href={`${GH_URL}/blob/main/LICENSE`} target="_blank" rel="noopener" class="lnk">License (MIT)</a></li>
+          <li><a href={`${GH_URL}/releases`} target="_blank" rel="noopener" class="lnk">Releases</a></li>
+        </ul>
+      </div>
+      <div>
+        <p class="section-num mb-4">privacy</p>
+        <ul class="space-y-2 text-[13px]">
+          <li><a href="#privacy" class="lnk">No tracking</a></li>
+          <li><a href="#privacy" class="lnk">Local-only</a></li>
+          <li><a href={`${GH_URL}#privacy--security`} target="_blank" rel="noopener" class="lnk">Tech details</a></li>
+        </ul>
+      </div>
+      <div>
+        <p class="section-num mb-4">about</p>
+        <ul class="space-y-2 text-[13px]">
+          <li class="text-fg-dim">Built by <a href="https://github.com/brendangooden" target="_blank" rel="noopener" class="lnk">Brendan Gooden</a></li>
+          <li class="text-fg-dim">Not affiliated with Microsoft</li>
+          <li class="text-fg-dim">Not affiliated with Google</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- spec-sheet readout -->
+    <div class="border border-border">
+      <div class="grid grid-cols-2 md:grid-cols-5 text-[11px]">
+        <div class="px-4 py-3 border-r border-b md:border-b-0 border-border">
+          <span class="text-fg-faint block">version</span>
+          <span class="text-fg">v1.3.0</span>
+        </div>
+        <div class="px-4 py-3 border-r border-b md:border-b-0 border-border">
+          <span class="text-fg-faint block">license</span>
+          <span class="text-fg">MIT</span>
+        </div>
+        <div class="px-4 py-3 border-r border-b md:border-b-0 border-border">
+          <span class="text-fg-faint block">manifest</span>
+          <span class="text-fg">v3</span>
+        </div>
+        <div class="px-4 py-3 border-r border-border">
+          <span class="text-fg-faint block">browsers</span>
+          <span class="text-fg">chrome · edge</span>
+        </div>
+        <div class="px-4 py-3 border-border col-span-2 md:col-span-1">
+          <span class="text-fg-faint block">built with</span>
+          <span class="text-fg">astro · tailwind · ❤</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="ascii-rule mt-8 select-none">
+      ────────────────────────────────────────────────────────────────────
+    </div>
+
+    <p class="mt-6 text-[11px] text-fg-faint">
+      © {year} &mdash; Use responsibly. Respect copyright. Respect the people in
+      the recordings you save.
+    </p>
+  </div>
+</footer>
