@@ -21,8 +21,7 @@
         "https://teams.microsoft.com/*",
         "https://teams.cloud.microsoft/*"
       ],
-      "js": ["intercept.js", "content.js"],
-      "css": ["modal.css"],
+      "js": ["intercept.js"],
       "run_at": "document_start",
       "all_frames": true,
       "world": "MAIN"
