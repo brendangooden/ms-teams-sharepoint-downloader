@@ -1290,11 +1290,13 @@
     if (path.includes('/stream.aspx')) return true;
     // SharePoint embed page pointing at a video file.
     if (path.includes('/embed.aspx') && /\.(mp4|m4v|mov|webm|avi|mkv)/.test(search)) return true;
-    // Teams hosts always host video content somewhere in the shell; the legacy
-    // injection already gates on a command-bar element, so being permissive
-    // here is OK — the buttons remain in "waiting" state until a manifest is
-    // actually captured.
-    if (/^teams\./.test(loc.hostname)) return true;
+    // Teams web shell. The top frame on teams.* is the Teams chrome itself
+    // (chat, calendar, app launcher); the actual video viewer always runs in
+    // a sub-frame — either a SharePoint stream.aspx iframe (handled by the
+    // path check above on that frame's location) or a Teams-internal player.
+    // Treating the top frame as a video page surfaces the widget over the
+    // Teams chrome where it'll never receive a manifest and stays "disabled".
+    if (/^teams\./.test(loc.hostname) && window !== window.top) return true;
     return false;
   }
 
