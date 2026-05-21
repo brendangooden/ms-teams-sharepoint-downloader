@@ -1,6 +1,6 @@
 ---
-const STAR_HISTORY_URL =
-  'https://www.star-history.com/?repos=brendangooden%2Fms-teams-sharepoint-downloader&type=date&legend=top-left';
+const STAR_CHART_URL =
+  'https://api.star-history.com/chart?repos=brendangooden/ms-teams-sharepoint-downloader&type=date&legend=top-left';
 const GH_URL =
   'https://github.com/brendangooden/ms-teams-sharepoint-downloader';
 ---
@@ -21,19 +21,15 @@ const GH_URL =
       </div>
     </div>
 
-    <div class="border border-border bg-white">
-      <iframe
-        src={STAR_HISTORY_URL}
-        title="GitHub star history for brendangooden/ms-teams-sharepoint-downloader"
-        loading="lazy"
-        referrerpolicy="no-referrer"
-        class="block w-full h-[460px] sm:h-[500px]"
-        frameBorder="0"
-      ></iframe>
-    </div>
+    <img
+      src={STAR_CHART_URL}
+      alt="GitHub star history for brendangooden/ms-teams-sharepoint-downloader"
+      loading="lazy"
+      class="block mx-auto w-full max-w-3xl h-auto"
+    />
 
     <div class="mt-6 flex flex-wrap items-center justify-between gap-3 text-[12px] text-fg-faint">
-      <span>chart embedded from <span class="kbd">star-history.com</span></span>
+      <span>chart from <span class="kbd">star-history.com</span></span>
       <a
         href={GH_URL}
         target="_blank"
