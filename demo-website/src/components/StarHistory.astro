@@ -1,0 +1,47 @@
+---
+const STAR_HISTORY_URL =
+  'https://www.star-history.com/?repos=brendangooden%2Fms-teams-sharepoint-downloader&type=date&legend=top-left';
+const GH_URL =
+  'https://github.com/brendangooden/ms-teams-sharepoint-downloader';
+---
+<section id="stars" class="hairline bg-bg-elev">
+  <div class="mx-auto max-w-[1280px] px-6 lg:px-10 py-20 lg:py-28">
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-10 mb-14">
+      <div class="lg:col-span-4">
+        <p class="section-num">07 / stars</p>
+      </div>
+      <div class="lg:col-span-8">
+        <h2 class="section-title">
+          People are <em>noticing.</em>
+        </h2>
+        <p class="mt-5 text-fg-dim text-[14px] leading-[1.65] max-w-2xl">
+          Star history on GitHub &mdash; the only metric this project keeps.
+          If the extension saved you time, a star helps others find it.
+        </p>
+      </div>
+    </div>
+
+    <div class="border border-border bg-white">
+      <iframe
+        src={STAR_HISTORY_URL}
+        title="GitHub star history for brendangooden/ms-teams-sharepoint-downloader"
+        loading="lazy"
+        referrerpolicy="no-referrer"
+        class="block w-full h-[460px] sm:h-[500px]"
+        frameBorder="0"
+      ></iframe>
+    </div>
+
+    <div class="mt-6 flex flex-wrap items-center justify-between gap-3 text-[12px] text-fg-faint">
+      <span>chart embedded from <span class="kbd">star-history.com</span></span>
+      <a
+        href={GH_URL}
+        target="_blank"
+        rel="noopener"
+        class="text-fg hover:text-red transition-colors"
+      >
+        star on github &rarr;
+      </a>
+    </div>
+  </div>
+</section>
