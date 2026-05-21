@@ -1,6 +1,22 @@
 ---
+import { getImage } from 'astro:assets';
+import darkRecording from '../assets/screenshots/dark/recording.png';
+import lightRecording from '../assets/screenshots/light/recording.png';
+import darkVideo from '../assets/screenshots/dark/video-modal.png';
+import lightVideo from '../assets/screenshots/light/video-modal.png';
+
 const CHROME_URL = 'https://chromewebstore.google.com/detail/ms-teams-transcript-downl/hmljlkhcebhkkhbbafiheolbneecoinp';
 const GH_URL = 'https://github.com/brendangooden/ms-teams-sharepoint-downloader';
+
+const recordingWidths = [640, 960, 1280];
+const modalWidths = [400, 600, 900];
+
+const [recDark, recLight, modDark, modLight] = await Promise.all([
+  getImage({ src: darkRecording, widths: recordingWidths, format: 'webp' }),
+  getImage({ src: lightRecording, widths: recordingWidths, format: 'webp' }),
+  getImage({ src: darkVideo, widths: modalWidths, format: 'webp' }),
+  getImage({ src: lightVideo, widths: modalWidths, format: 'webp' }),
+]);
 ---
 <section id="top" class="relative">
   <div class="mx-auto max-w-[1280px] px-6 lg:px-10 pt-14 lg:pt-24 pb-20 lg:pb-28">
@@ -57,35 +73,53 @@ const GH_URL = 'https://github.com/brendangooden/ms-teams-sharepoint-downloader'
         </dl>
       </div>
 
-      <!-- RIGHT — in-browser download terminal ──────────────────────── -->
+      <!-- RIGHT — in-product screenshot composite ───────────────────── -->
       <div class="lg:col-span-5 reveal reveal-3">
-        <div class="terminal">
-          <div class="terminal-bar">
-            <span class="terminal-dot" style="background: var(--purple)"></span>
-            <span class="terminal-dot"></span>
-            <span class="terminal-dot"></span>
-            <span class="ml-2">~ ms-stream &mdash; in-browser</span>
-          </div>
-          <pre class="terminal-body"><span class="term-cmd">~ $</span> ms-stream
+        <div class="relative pb-16 lg:pb-20">
+          <!-- Back card: SharePoint Stream viewer with injected buttons in command bar -->
+          <picture class="block border border-border bg-bg-elev shadow-[0_24px_60px_-20px_rgba(0,0,0,0.55)] lg:-rotate-[1deg] transform-gpu">
+            <source
+              srcset={recLight.srcSet.attribute}
+              media="(prefers-color-scheme: light)"
+              type="image/webp"
+            />
+            <source srcset={recDark.srcSet.attribute} type="image/webp" />
+            <img
+              src={recDark.src}
+              alt="Download Video and Download Transcript buttons injected into SharePoint Stream's command bar"
+              width={recDark.attributes.width}
+              height={recDark.attributes.height}
+              loading="eager"
+              decoding="async"
+              fetchpriority="high"
+              class="block w-full h-auto"
+            />
+          </picture>
 
-<span class="term-arrow">▸</span> <span class="term-key">detected  </span> <span class="term-val">Stream-on-SharePoint</span>
-<span class="term-arrow">▸</span> <span class="term-key">duration  </span> <span class="term-val">00:23:41</span>
-<span class="term-arrow">▸</span> <span class="term-key">segments  </span> <span class="term-val">713</span>
-<span class="term-arrow">▸</span> <span class="term-key">encryption</span> <span class="term-val">SEA AES-128-CBC</span> <span class="term-comment">— auto-decrypting</span>
-<span class="term-arrow">▸</span> <span class="term-key">parallel  </span> <span class="term-val">×4</span> <span class="term-comment">— tunable up to ×16, auto-backoff on 429</span>
-
-<span class="term-arrow">▸</span> <span class="term-comment">downloading in-browser...</span>
-
-  <span class="term-purple">▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▱▱▱▱</span>  <span class="term-val">81%</span>
-  <span class="term-key">667.0 MB / 823.1 MB · 38 MB/s</span>
-
-<span class="term-arrow">▸</span> <span class="term-comment">muxing on worker thread &mdash; UI stays responsive</span>
-<span class="term-arrow">▸</span> <span class="term-comment">→ ~/Downloads/team-stream.mp4</span><span class="term-cursor"></span></pre>
+          <!-- Front card: video download modal floating over bottom-right -->
+          <picture class="absolute bottom-0 right-[-6%] w-[78%] border border-border bg-bg-elev shadow-[0_32px_80px_-12px_rgba(0,0,0,0.7)] lg:rotate-[2deg] transform-gpu">
+            <source
+              srcset={modLight.srcSet.attribute}
+              media="(prefers-color-scheme: light)"
+              type="image/webp"
+            />
+            <source srcset={modDark.srcSet.attribute} type="image/webp" />
+            <img
+              src={modDark.src}
+              alt="Video download modal — format picker (MP4 / M4A / video-only), parallel segment fetch dial, big green Download button"
+              width={modDark.attributes.width}
+              height={modDark.attributes.height}
+              loading="eager"
+              decoding="async"
+              fetchpriority="high"
+              class="block w-full h-auto"
+            />
+          </picture>
         </div>
 
-        <p class="mt-3 text-[11px] text-fg-faint flex items-center gap-2">
+        <p class="mt-6 text-[11px] text-fg-faint flex items-center gap-2">
           <span class="inline-block w-1.5 h-1.5 rounded-full" style="background: var(--green); box-shadow: 0 0 8px var(--green)"></span>
-          in-browser download &mdash; parallel, encryption-aware, no external tools
+          in your actual Teams / SharePoint tab &mdash; two new buttons, native chrome
         </p>
       </div>
     </div>
