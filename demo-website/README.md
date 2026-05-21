@@ -40,7 +40,7 @@ Cloudflare auto-builds and deploys on push. One-time setup:
 
 ## Updating content
 
-- Product copy source of truth: `../chrome-web-store-description.md` and `../README.md`
+- Product copy source of truth: `../chrome-store/description.md` and `../README.md`
 - Screenshots: `src/assets/screenshots/{dark,light}/{recording,video-modal,transcript-modal}.png`
 - Brand colour tokens: `src/styles/global.css` (`--red`, `--purple`, `--green`, etc.)
 
