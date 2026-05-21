@@ -1310,15 +1310,17 @@
     const vBtn = widget.querySelector('[data-feature="video"]');
     const onVideoPage = isLikelyVideoPage();
 
-    // Each button shows when: legacy not present AND (we're on a video page
-    // OR we've already captured the corresponding resource). The second clause
-    // means we won't accidentally hide a button on a page our heuristic missed
-    // — if intercept.js captured a manifest, we know it's a video page.
+    // Each button shows when: legacy not present AND we're on a video page.
+    // Do NOT fall back to "URL was captured" — SharePoint site landing pages
+    // (e.g. /sites/<name>) can host inline Stream web parts that legitimately
+    // fetch videomanifest/transcripts URLs in the top frame. Treating that as
+    // "must be a video page" caused the widget to appear as a banner across
+    // non-viewer pages.
     let anyVisible = false;
 
     if (tBtn) {
       const legacyTranscript = document.querySelector('#customDownloadTranscript');
-      const show = !legacyTranscript && (onVideoPage || !!transcriptUrl);
+      const show = !legacyTranscript && onVideoPage;
       tBtn.style.display = show ? '' : 'none';
       if (show) anyVisible = true;
       tBtn.setAttribute('data-state', transcriptUrl ? 'ready' : 'waiting');
@@ -1328,7 +1330,7 @@
     }
     if (vBtn) {
       const legacyVideo = document.querySelector('#customDownloadVideo');
-      const show = !legacyVideo && (onVideoPage || !!videoManifestUrl);
+      const show = !legacyVideo && onVideoPage;
       vBtn.style.display = show ? '' : 'none';
       if (show) anyVisible = true;
       vBtn.setAttribute('data-state', videoManifestUrl ? 'ready' : 'waiting');
@@ -1357,6 +1359,16 @@
   function injectVideoDownloadButton() {
     // Check if already injected
     if (document.querySelector('#customDownloadVideo')) return true;
+
+    // The `.ms-CommandBar-primaryCommand` selector below also matches the
+    // command bar on SharePoint site landing pages and document libraries
+    // (e.g. /sites/<name>), where injecting Download buttons is wrong.
+    // Gate on the same heuristic the floating widget uses so we only attach
+    // to the command bar of an actual Stream/embed/Teams viewer page.
+    // Return true to signal "done, don't retry" so the MutationObserver in
+    // initialize() can disconnect once the legacy transcript path also
+    // resolves (or its 30s timeout fires).
+    if (!isLikelyVideoPage()) return true;
 
     // Place in the top command bar (alongside Upload, Favorites, etc.)
     // rather than inside the transcript panel
