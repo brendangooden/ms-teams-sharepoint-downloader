@@ -152,3 +152,13 @@ Built to help people access their own Teams / SharePoint / Stream recordings and
 ---
 
 **Note:** Intended for accessing your own meeting recordings and transcripts. Respect copyright and privacy policies.
+
+## Star History
+
+<a href="https://www.star-history.com/?repos=brendangooden%2Fms-teams-sharepoint-downloader">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=brendangooden/ms-teams-sharepoint-downloader&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=brendangooden/ms-teams-sharepoint-downloader&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=brendangooden/ms-teams-sharepoint-downloader&type=date&legend=top-left" />
+ </picture>
+</a>
