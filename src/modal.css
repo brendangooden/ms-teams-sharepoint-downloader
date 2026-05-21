@@ -390,6 +390,37 @@
   line-height: 1.5;
 }
 
+.video-parallel-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 0 4px;
+  font-size: 13px;
+  color: var(--ttd-text-dim);
+  flex-wrap: wrap;
+}
+
+.video-parallel-label {
+  color: var(--ttd-text);
+  font-weight: 600;
+}
+
+.video-parallel-select {
+  padding: 4px 8px;
+  border: 1px solid var(--ttd-border-strong);
+  border-radius: 4px;
+  background: var(--ttd-bg-input);
+  color: var(--ttd-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.video-parallel-hint {
+  font-size: 12px;
+  color: var(--ttd-text-dim);
+  font-style: italic;
+}
+
 .video-info-warning strong {
   color: var(--ttd-text-info-warn-str);
 }

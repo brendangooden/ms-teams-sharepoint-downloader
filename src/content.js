@@ -21,6 +21,15 @@
   // guest/anonymous viewer scenarios where cookie auth alone is refused.
   let spApiBearer = null;
 
+  // Global segment-fetch budget — total in flight across all tracks. SharePoint
+  // throttles around the low-teens for many tenants, so default 4 keeps us
+  // well under their limit; users can dial up to 16 for lax tenants or down
+  // to 1 for flaky / metered networks. 32+ reliably triggered 429s in testing
+  // so we cap there. 429s are retried with the Retry-After header (or
+  // exponential backoff) by fetchWithRetry. Persisted via chrome.storage.sync.
+  let videoDownloadConcurrency = 4;
+  const VIDEO_CONCURRENCY_OPTIONS = [1, 2, 4, 8, 16];
+
   // Inline SVG download glyph (down-arrow into tray) — clearer "downloadable"
   // affordance than emoji icons. Shared by the legacy command-bar button and
   // the floating widget so both feel consistent.
@@ -621,7 +630,9 @@
     console.debug('[Transcript Downloader] Download complete!');
   }
 
-  // Download decrypted file
+  // Download decrypted file. `data` may be a string / Uint8Array / single
+  // ArrayBuffer OR an array of buffers (Blob concatenates lazily, avoiding
+  // an intermediate big Uint8Array allocation for large video downloads).
   function downloadDecryptedFile(data, filename) {
     const mimeTypes = {
       '.json': 'application/json',
@@ -630,8 +641,8 @@
     };
     const ext = filename.substring(filename.lastIndexOf('.'));
     const mimeType = mimeTypes[ext] || 'text/plain';
-    
-    const blob = new Blob([data], { type: mimeType });
+
+    const blob = new Blob(Array.isArray(data) ? data : [data], { type: mimeType });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -776,25 +787,85 @@
     return out;
   }
 
-  async function downloadDashSegments(tracks, onProgress, signal) {
-    const CONCURRENCY = 8;
+  // Abortable sleep — resolves after `ms` unless `signal` aborts first.
+  function abortableSleep(ms, signal) {
+    return new Promise((resolve, reject) => {
+      if (signal && signal.aborted) {
+        reject(Object.assign(new Error('Cancelled'), { name: 'AbortError' }));
+        return;
+      }
+      const t = setTimeout(() => {
+        if (signal) signal.removeEventListener('abort', onAbort);
+        resolve();
+      }, ms);
+      function onAbort() {
+        clearTimeout(t);
+        reject(Object.assign(new Error('Cancelled'), { name: 'AbortError' }));
+      }
+      if (signal) signal.addEventListener('abort', onAbort, { once: true });
+    });
+  }
 
-    function concatBuffers(bufs) {
-      const total = bufs.reduce((s, b) => s + b.byteLength, 0);
-      const out = new Uint8Array(total);
-      let offset = 0;
-      for (const b of bufs) { out.set(new Uint8Array(b), offset); offset += b.byteLength; }
-      return out;
+  // Fetch with retry on 429/503 + transient network errors. Honours the
+  // `Retry-After` header (seconds) if the server sends one; otherwise uses
+  // exponential backoff capped at 30s. Gives up after `maxAttempts`. The
+  // optional `onThrottle({attempt, delayMs, status})` callback lets the
+  // caller surface "throttled, backing off..." in the progress UI.
+  async function fetchWithRetry(url, init, signal, onThrottle, maxAttempts = 6) {
+    let attempt = 0;
+    for (;;) {
+      attempt++;
+      if (signal && signal.aborted) {
+        throw Object.assign(new Error('Cancelled'), { name: 'AbortError' });
+      }
+      let resp;
+      try {
+        resp = await fetch(url, init);
+      } catch (e) {
+        if (e.name === 'AbortError') throw e;
+        if (attempt >= maxAttempts) throw e;
+        const delayMs = Math.min(1000 * Math.pow(2, attempt - 1), 30000);
+        if (onThrottle) onThrottle({ attempt, delayMs, status: 0 });
+        await abortableSleep(delayMs, signal);
+        continue;
+      }
+      // 429 = throttle; 503 = transient overload. Anything else: surface to caller.
+      if ((resp.status === 429 || resp.status === 503) && attempt < maxAttempts) {
+        const headerSecs = parseInt(resp.headers.get('Retry-After'), 10);
+        const delayMs = Number.isFinite(headerSecs) && headerSecs > 0
+          ? Math.min(headerSecs * 1000, 30000)
+          : Math.min(1000 * Math.pow(2, attempt - 1), 30000);
+        if (onThrottle) onThrottle({ attempt, delayMs, status: resp.status });
+        await abortableSleep(delayMs, signal);
+        continue;
+      }
+      return resp;
     }
+  }
+
+  async function downloadDashSegments(tracks, onProgress, signal) {
+    // Concurrency is a GLOBAL budget across all tracks — picking 8 in the
+    // modal means 8 in flight total (not 8 per track). SharePoint's per-IP
+    // throttling kicks in around the low-teens for many tenants, so doubling
+    // the in-flight count when video-audio runs both tracks at once was
+    // hitting 429s.
+    const concurrency = videoDownloadConcurrency;
 
     const totalSegs = tracks.reduce((s, t) => s + (t.initUrl ? 1 : 0) + t.segments.length, 0);
     let done = 0;
-    const results = [];
+    let lastThrottleStatus = null;
 
-    for (let ti = 0; ti < tracks.length; ti++) {
-      const track = tracks[ti];
+    function reportProgress(text) { onProgress(done, totalSegs, text); }
+    function noteThrottle({ attempt, delayMs, status }) {
+      lastThrottleStatus = `HTTP ${status || 'network'} — backing off ${Math.round(delayMs / 1000)}s (attempt ${attempt})...`;
+      reportProgress(lastThrottleStatus);
+    }
+
+    // Per-track preamble (encryption key + init segment) runs in parallel
+    // across tracks but is exempt from the segment-fetch budget — there are
+    // at most 2 inits and 2 key fetches in flight.
+    const trackStates = await Promise.all(tracks.map(async (track) => {
       const label = tracks.length > 1 ? ` (${track.type} track)` : '';
-      const initBufs = [];
 
       // If this track is SEA-encrypted, fetch the AES-128-CBC key once. The
       // key endpoint lives on the .svc.ms CDN and requires the x-spopactoken
@@ -802,11 +873,11 @@
       // manifest's <BaseURL>) and are same-origin, no extra auth needed.
       let cryptoKey = null;
       if (track.encryption) {
-        onProgress(done, totalSegs, `Fetching encryption key${label}...`);
+        reportProgress(`Fetching encryption key${label}...`);
         const init = track.encryption.keyUri.includes('svc.ms') && videoSpopActoken
           ? { signal, headers: { 'x-spopactoken': videoSpopActoken } }
           : { signal };
-        const keyResp = await fetch(track.encryption.keyUri, init);
+        const keyResp = await fetchWithRetry(track.encryption.keyUri, init, signal, noteThrottle);
         if (!keyResp.ok) throw new Error(`Encryption key fetch failed: HTTP ${keyResp.status}`);
         const keyBuf = await keyResp.arrayBuffer();
         cryptoKey = await crypto.subtle.importKey('raw', keyBuf, { name: 'AES-CBC' }, false, ['decrypt']);
@@ -817,574 +888,132 @@
         return await crypto.subtle.decrypt({ name: 'AES-CBC', iv: track.encryption.iv }, cryptoKey, buf);
       }
 
-      // Init segment must come first — fetch sequentially before media
-      // segments. Plain fetch (no custom headers, no credentials): segments
-      // are now served from the same origin as the page via the manifest's
-      // <BaseURL>, so cookies + ambient session are sufficient.
+      // Init segment must come first in the output array. Plain fetch (no
+      // custom headers, no credentials): segments are served from the same
+      // origin as the page via the manifest's <BaseURL>, so cookies suffice.
+      const orderedBufs = new Array((track.initUrl ? 1 : 0) + track.segments.length);
+      let segStart = 0;
       if (track.initUrl) {
-        onProgress(done, totalSegs, `Fetching init segment${label}...`);
-        const r = await fetch(track.initUrl, { signal });
+        reportProgress(`Fetching init segment${label}...`);
+        const r = await fetchWithRetry(track.initUrl, { signal }, signal, noteThrottle);
         if (!r.ok) throw new Error(`Init segment failed: HTTP ${r.status} for ${track.initUrl}`);
-        initBufs.push(await decryptIfNeeded(await r.arrayBuffer()));
+        orderedBufs[0] = await decryptIfNeeded(await r.arrayBuffer());
         done++;
+        segStart = 1;
       }
 
-      // Fetch media segments in parallel, storing results by index to preserve order
-      const segBufs = new Array(track.segments.length);
-      onProgress(done, totalSegs, `Downloading ${track.segments.length} segments${label}...`);
+      return { track, label, orderedBufs, segStart, decryptIfNeeded };
+    }));
 
-      await new Promise((resolve, reject) => {
-        if (track.segments.length === 0) { resolve(); return; }
-        let qIdx = 0, inFlight = 0;
-
-        function launch() {
-          while (inFlight < CONCURRENCY && qIdx < track.segments.length) {
-            if (signal && signal.aborted) {
-              reject(Object.assign(new Error('Cancelled'), { name: 'AbortError' }));
-              return;
-            }
-            const idx = qIdx++;
-            inFlight++;
-            fetch(track.segments[idx], { signal })
-              .then(r => {
-                if (!r.ok) throw new Error(`Segment ${idx + 1} failed: HTTP ${r.status} for ${track.segments[idx]}`);
-                return r.arrayBuffer();
-              })
-              .then(decryptIfNeeded)
-              .then(buf => {
-                segBufs[idx] = buf;
-                done++;
-                onProgress(done, totalSegs, `Downloading segments${label}... (${done}/${totalSegs})`);
-                inFlight--;
-                if (inFlight === 0 && qIdx >= track.segments.length) resolve();
-                else launch();
-              })
-              .catch(reject);
-          }
-        }
-        launch();
-      });
-
-      results.push(concatBuffers([...initBufs, ...segBufs]));
+    // Flat work queue of (trackState, segmentIndex) pairs across all tracks,
+    // drained by a single global concurrency limiter.
+    const queue = [];
+    for (const st of trackStates) {
+      for (let si = 0; si < st.track.segments.length; si++) queue.push({ st, si });
     }
+    reportProgress(`Downloading ${queue.length} segments (${concurrency} parallel)...`);
 
-    return results;
-  }
+    await new Promise((resolve, reject) => {
+      if (queue.length === 0) { resolve(); return; }
+      let qIdx = 0, inFlight = 0;
+      let rejected = false;
 
-  // Mux separate video and audio fMP4 buffers into a single MP4.
-  // Strategy: build combined moov (video moov + audio trak/trex spliced in),
-  // then create combined fragments where each moof contains two traf boxes
-  // (video + audio) and each mdat contains both tracks' data.
-  // This standard fMP4 pattern is compatible with VLC and other players.
-  async function muxTracks(videoUint8, audioUint8, onProgress) {
-    function readU32(b, off) {
-      return ((b[off] << 24) | (b[off+1] << 16) | (b[off+2] << 8) | b[off+3]) >>> 0;
-    }
-    function writeU32(b, off, val) {
-      b[off] = (val >>> 24) & 0xFF; b[off+1] = (val >>> 16) & 0xFF;
-      b[off+2] = (val >>> 8) & 0xFF; b[off+3] = val & 0xFF;
-    }
-    function btype(b, off) {
-      return String.fromCharCode(b[off], b[off+1], b[off+2], b[off+3]);
-    }
-    function cat(...arrays) {
-      const out = new Uint8Array(arrays.reduce((s, a) => s + a.byteLength, 0));
-      let o = 0; for (const a of arrays) { out.set(a, o); o += a.byteLength; }
-      return out;
-    }
-
-    // Scan bytes starting at startOff and return first box with matching type
-    // maxOff limits the search to within a parent box's content
-    function findBox(b, type, startOff = 0, maxOff = b.length) {
-      let pos = startOff;
-      while (pos + 8 <= maxOff) {
-        const size = readU32(b, pos);
-        if (size < 8) break;
-        if (btype(b, pos + 4) === type) return { offset: pos, size };
-        pos += size;
-      }
-      return null;
-    }
-
-    onProgress(0, 1, 'Muxing tracks...');
-
-    // ---- Extract moov from each input ----
-    const vMoovBox = findBox(videoUint8, 'moov');
-    const aMoovBox = findBox(audioUint8, 'moov');
-    if (!vMoovBox) throw new Error('No moov found in video buffer');
-    if (!aMoovBox) throw new Error('No moov found in audio buffer');
-
-    const vMoov = videoUint8.slice(vMoovBox.offset, vMoovBox.offset + vMoovBox.size);
-    const aMoov = audioUint8.slice(aMoovBox.offset, aMoovBox.offset + aMoovBox.size);
-
-    // ---- Extract audio trak, patch tkhd.track_id = 2 ----
-    const aTrakBox = findBox(aMoov, 'trak', 8);
-    if (!aTrakBox) throw new Error('No trak in audio moov');
-    const aTrak = new Uint8Array(aMoov.slice(aTrakBox.offset, aTrakBox.offset + aTrakBox.size));
-    const aTkhdBox = findBox(aTrak, 'tkhd', 8);
-    if (aTkhdBox) {
-      // tkhd full-box: header(8) + version(1) + flags(3) + times(v=0:8, v=1:16) + track_id(4)
-      const v = aTrak[aTkhdBox.offset + 8];
-      writeU32(aTrak, aTkhdBox.offset + (v === 1 ? 28 : 20), 2);
-    }
-
-    // ---- Extract audio trex, patch track_id = 2 (or build minimal one) ----
-    let aTrex;
-    const aMvexBox = findBox(aMoov, 'mvex', 8);
-    if (aMvexBox) {
-      const aTrexBox = findBox(aMoov, 'trex', aMvexBox.offset + 8);
-      if (aTrexBox) {
-        aTrex = new Uint8Array(aMoov.slice(aTrexBox.offset, aTrexBox.offset + aTrexBox.size));
-        writeU32(aTrex, 12, 2); // trex: header(8)+version+flags(4)+track_id(4)
-      }
-    }
-    if (!aTrex) {
-      aTrex = new Uint8Array([
-        0x00,0x00,0x00,0x20, 0x74,0x72,0x65,0x78, // size=32, 'trex'
-        0x00,0x00,0x00,0x00,                       // version+flags
-        0x00,0x00,0x00,0x02,                       // track_id=2
-        0x00,0x00,0x00,0x01,                       // default_sample_description_index=1
-        0x00,0x00,0x00,0x00,                       // default_sample_duration
-        0x00,0x00,0x00,0x00,                       // default_sample_size
-        0x00,0x00,0x00,0x00,                       // default_sample_flags
-      ]);
-    }
-
-    // ---- Build combined moov ----
-    // Take the video moov verbatim (avcC/hvcC/esds all preserved perfectly),
-    // patch mvhd.next_track_id = 3, insert aTrak + expand mvex with aTrex.
-    const workMoov = new Uint8Array(vMoov);
-
-    // Patch mvhd.next_track_id
-    // mvhd offsets: header(8)+fullbox(4)+times(v=0:8,v=1:16)+timescale(4)+duration(v=0:4,v=1:8)
-    //              +rate(4)+volume(2)+reserved(2+8)+matrix(36)+pre_defined(24) => next_track_id
-    // v=0: 8+4+4+4+4+4+4+2+2+8+36+24 = 104
-    // v=1: 8+4+8+8+4+8+4+2+2+8+36+24 = 116
-    const vMvhdBox = findBox(workMoov, 'mvhd', 8);
-    if (vMvhdBox) {
-      const v = workMoov[vMvhdBox.offset + 8];
-      writeU32(workMoov, vMvhdBox.offset + (v === 1 ? 116 : 104), 3);
-    }
-
-    const vMvexBox = findBox(workMoov, 'mvex', 8);
-    let combinedMoov;
-
-    if (vMvexBox) {
-      // Expand existing mvex with aTrex
-      const oldMvex = workMoov.slice(vMvexBox.offset, vMvexBox.offset + vMvexBox.size);
-      const newMvex = cat(oldMvex, aTrex);
-      writeU32(newMvex, 0, newMvex.length);
-
-      // Insert aTrak before mvex, swap in newMvex
-      const beforeMvex  = workMoov.slice(8, vMvexBox.offset);
-      const afterMvex   = workMoov.slice(vMvexBox.offset + vMvexBox.size);
-      const moovContent = cat(beforeMvex, aTrak, newMvex, afterMvex);
-      combinedMoov = new Uint8Array(8 + moovContent.length);
-      writeU32(combinedMoov, 0, combinedMoov.length);
-      combinedMoov.set([0x6D,0x6F,0x6F,0x76], 4); // 'moov'
-      combinedMoov.set(moovContent, 8);
-    } else {
-      // No mvex -- build one with video trex(id=1) + audio trex(id=2)
-      const vTrex = new Uint8Array([
-        0x00,0x00,0x00,0x20, 0x74,0x72,0x65,0x78,
-        0x00,0x00,0x00,0x00, 0x00,0x00,0x00,0x01,
-        0x00,0x00,0x00,0x01, 0x00,0x00,0x00,0x00,
-        0x00,0x00,0x00,0x00, 0x00,0x00,0x00,0x00,
-      ]);
-      const mvexContent = cat(vTrex, aTrex);
-      const mvex = new Uint8Array(8 + mvexContent.length);
-      writeU32(mvex, 0, mvex.length);
-      mvex.set([0x6D,0x76,0x65,0x78], 4); // 'mvex'
-      mvex.set(mvexContent, 8);
-
-      const moovContent = cat(workMoov.slice(8), aTrak, mvex);
-      combinedMoov = new Uint8Array(8 + moovContent.length);
-      writeU32(combinedMoov, 0, combinedMoov.length);
-      combinedMoov.set([0x6D,0x6F,0x6F,0x76], 4); // 'moov'
-      combinedMoov.set(moovContent, 8);
-    }
-
-    // ---- Defragment: convert fragmented MP4 to flat (non-fragmented) MP4 ----
-    // This produces the same format as "ffmpeg -c copy" and is fully compatible
-    // with VLC seeking, unlike fragmented MP4 which VLC handles poorly.
-
-    // Collect moof+mdat from each input
-    function collectFragments(bytes) {
-      const frags = [];
-      let pos = 0;
-      while (pos + 8 <= bytes.length) {
-        const size = readU32(bytes, pos);
-        if (size < 8) break;
-        if (btype(bytes, pos + 4) === 'moof') {
-          let trafData = null;
-          let mp = pos + 8;
-          while (mp + 8 <= pos + size) {
-            const csz = readU32(bytes, mp);
-            if (csz < 8) break;
-            if (btype(bytes, mp + 4) === 'traf') {
-              trafData = bytes.slice(mp, mp + csz);
-              break;
-            }
-            mp += csz;
-          }
-          const nextPos = pos + size;
-          let mdatPayload = null;
-          if (nextPos + 8 <= bytes.length && btype(bytes, nextPos + 4) === 'mdat') {
-            const mdatSize = readU32(bytes, nextPos);
-            mdatPayload = bytes.slice(nextPos + 8, nextPos + mdatSize);
-          }
-          if (trafData && mdatPayload) frags.push({ traf: trafData, mdatPayload });
-        }
-        pos += size;
-      }
-      return frags;
-    }
-
-    // Parse traf to extract per-sample info: [{size, duration, flags, ctsOffset}]
-    function parseTrafSamples(trafBytes) {
-      let defDur = 0, defSize = 0, defFlags = 0;
-      const samples = [];
-      let pos = 8;
-      while (pos + 8 <= trafBytes.length) {
-        const sz = readU32(trafBytes, pos);
-        if (sz < 8) break;
-        const t = btype(trafBytes, pos + 4);
-        if (t === 'tfhd') {
-          const fl = ((trafBytes[pos+9]<<16)|(trafBytes[pos+10]<<8)|trafBytes[pos+11])>>>0;
-          let o = pos + 16;
-          if (fl & 1) o += 8;   // base_data_offset
-          if (fl & 2) o += 4;   // sample_description_index
-          if (fl & 8) { defDur = readU32(trafBytes, o); o += 4; }
-          if (fl & 0x10) { defSize = readU32(trafBytes, o); o += 4; }
-          if (fl & 0x20) { defFlags = readU32(trafBytes, o); o += 4; }
-        }
-        if (t === 'trun') {
-          const fl = ((trafBytes[pos+9]<<16)|(trafBytes[pos+10]<<8)|trafBytes[pos+11])>>>0;
-          const cnt = readU32(trafBytes, pos + 12);
-          let o = pos + 16;
-          if (fl & 1) o += 4; // data_offset
-          let firstFlags = defFlags;
-          if (fl & 4) { firstFlags = readU32(trafBytes, o); o += 4; }
-          for (let i = 0; i < cnt; i++) {
-            let dur = defDur, size = defSize, flags = (i === 0) ? firstFlags : defFlags, cts = 0;
-            if (fl & 0x100) { dur = readU32(trafBytes, o); o += 4; }
-            if (fl & 0x200) { size = readU32(trafBytes, o); o += 4; }
-            if (fl & 0x400) { flags = readU32(trafBytes, o); o += 4; }
-            if (fl & 0x800) { cts = readU32(trafBytes, o); o += 4; }
-            samples.push({ duration: dur, size, flags, ctsOffset: cts });
-          }
-        }
-        pos += sz;
-      }
-      return samples;
-    }
-
-    const vFrags = collectFragments(videoUint8);
-    const aFrags = collectFragments(audioUint8);
-
-    // Parse all samples
-    const vSamples = vFrags.flatMap(f => parseTrafSamples(f.traf));
-    const aSamples = aFrags.flatMap(f => parseTrafSamples(f.traf));
-
-    // Concatenate all sample data per track
-    const vData = cat(...vFrags.map(f => f.mdatPayload));
-    const aData = cat(...aFrags.map(f => f.mdatPayload));
-
-    onProgress(0, 1, 'Building MP4...');
-
-    // ---- Helper: build MP4 box ----
-    function makeBox(type, ...contents) {
-      const totalContent = contents.reduce((s, c) => s + c.byteLength, 0);
-      const box = new Uint8Array(8 + totalContent);
-      writeU32(box, 0, box.length);
-      for (let i = 0; i < 4; i++) box[4 + i] = type.charCodeAt(i);
-      let off = 8;
-      for (const c of contents) { box.set(c, off); off += c.byteLength; }
-      return box;
-    }
-
-    function makeFullBox(type, version, flags, content) {
-      const vf = new Uint8Array(4);
-      vf[0] = version;
-      vf[1] = (flags >> 16) & 0xFF; vf[2] = (flags >> 8) & 0xFF; vf[3] = flags & 0xFF;
-      return makeBox(type, vf, content);
-    }
-
-    // ---- Build sample table boxes for a track ----
-    function buildStts(samples) {
-      // Run-length encode durations
-      const runs = [];
-      for (const s of samples) {
-        if (runs.length > 0 && runs[runs.length - 1].dur === s.duration) {
-          runs[runs.length - 1].count++;
-        } else {
-          runs.push({ count: 1, dur: s.duration });
-        }
-      }
-      const data = new Uint8Array(4 + 4 + runs.length * 8);
-      // version=0, flags=0 (first 4 bytes = 0)
-      writeU32(data, 4, runs.length);
-      for (let i = 0; i < runs.length; i++) {
-        writeU32(data, 8 + i * 8, runs[i].count);
-        writeU32(data, 12 + i * 8, runs[i].dur);
-      }
-      return makeBox('stts', data);
-    }
-
-    function buildStsz(samples) {
-      // Check if all same size
-      const allSame = samples.length > 0 && samples.every(s => s.size === samples[0].size);
-      const data = new Uint8Array(4 + 4 + 4 + (allSame ? 0 : samples.length * 4));
-      // version=0, flags=0
-      writeU32(data, 4, allSame ? samples[0].size : 0); // sample_size (0 = variable)
-      writeU32(data, 8, samples.length);
-      if (!allSame) {
-        for (let i = 0; i < samples.length; i++) {
-          writeU32(data, 12 + i * 4, samples[i].size);
-        }
-      }
-      return makeBox('stsz', data);
-    }
-
-    function buildStsc() {
-      // One chunk per track containing all samples
-      const data = new Uint8Array(4 + 4 + 12);
-      writeU32(data, 4, 1); // entry_count
-      writeU32(data, 8, 1); // first_chunk
-      writeU32(data, 12, 0); // samples_per_chunk (placeholder, patched below)
-      writeU32(data, 16, 1); // sample_description_index
-      return makeBox('stsc', data);
-    }
-
-    function buildStco() {
-      // One chunk offset (placeholder, patched after moov size is known)
-      const data = new Uint8Array(4 + 4 + 4);
-      writeU32(data, 4, 1); // entry_count
-      writeU32(data, 8, 0); // chunk_offset (placeholder)
-      return makeBox('stco', data);
-    }
-
-    function buildStss(samples) {
-      // Sync sample table: sample numbers (1-based) where sample is a keyframe
-      // A sample is sync if sample_is_non_sync_sample bit (bit 16 = 0x10000) is NOT set
-      const syncIndices = [];
-      for (let i = 0; i < samples.length; i++) {
-        if (!(samples[i].flags & 0x10000)) syncIndices.push(i + 1);
-      }
-      const data = new Uint8Array(4 + 4 + syncIndices.length * 4);
-      writeU32(data, 4, syncIndices.length);
-      for (let i = 0; i < syncIndices.length; i++) {
-        writeU32(data, 8 + i * 4, syncIndices[i]);
-      }
-      return makeBox('stss', data);
-    }
-
-    function buildCtts(samples) {
-      // Composition time offset table (only if any sample has non-zero ctsOffset)
-      if (samples.every(s => s.ctsOffset === 0)) return null;
-      const runs = [];
-      for (const s of samples) {
-        if (runs.length > 0 && runs[runs.length - 1].offset === s.ctsOffset) {
-          runs[runs.length - 1].count++;
-        } else {
-          runs.push({ count: 1, offset: s.ctsOffset });
-        }
-      }
-      const data = new Uint8Array(4 + 4 + runs.length * 8);
-      writeU32(data, 4, runs.length);
-      for (let i = 0; i < runs.length; i++) {
-        writeU32(data, 8 + i * 8, runs[i].count);
-        writeU32(data, 12 + i * 8, runs[i].offset);
-      }
-      return makeBox('ctts', data);
-    }
-
-    // ---- Extract existing boxes from the combined moov ----
-    function extractBox(parent, type, startOff, maxOff) {
-      const box = findBox(parent, type, startOff || 0, maxOff || parent.length);
-      return box ? parent.slice(box.offset, box.offset + box.size) : null;
-    }
-
-    const existingMvhd = extractBox(combinedMoov, 'mvhd', 8);
-
-    // Find both traks in combinedMoov
-    const traks = [];
-    let tp = 8;
-    while (tp + 8 <= combinedMoov.length) {
-      const sz = readU32(combinedMoov, tp);
-      if (sz < 8) break;
-      if (btype(combinedMoov, tp + 4) === 'trak') {
-        traks.push(combinedMoov.slice(tp, tp + sz));
-      }
-      tp += sz;
-    }
-
-    function extractFromTrak(trak) {
-      const tkhd = extractBox(trak, 'tkhd', 8);
-      const mdiaBox = findBox(trak, 'mdia', 8);
-      const mdia = mdiaBox ? trak.slice(mdiaBox.offset, mdiaBox.offset + mdiaBox.size) : null;
-      let mdhd = null, hdlr = null, stsd = null, isVideo = false;
-      if (mdia) {
-        mdhd = extractBox(mdia, 'mdhd', 8);
-        hdlr = extractBox(mdia, 'hdlr', 8);
-        if (hdlr) {
-          // hdlr: fullbox(12) + pre_defined(4) + handler_type(4 bytes at offset 16)
-          isVideo = btype(hdlr, 16) === 'vide';
-        }
-        const minfBox = findBox(mdia, 'minf', 8);
-        if (minfBox) {
-          const minf = mdia.slice(minfBox.offset, minfBox.offset + minfBox.size);
-          const stblBox = findBox(minf, 'stbl', 8);
-          if (stblBox) {
-            const stbl = minf.slice(stblBox.offset, stblBox.offset + stblBox.size);
-            stsd = extractBox(stbl, 'stsd', 8);
-          }
-          // Extract vmhd or smhd
-          const vmhd = extractBox(minf, 'vmhd', 8);
-          const smhd = extractBox(minf, 'smhd', 8);
-          return { tkhd, mdhd, hdlr, stsd, isVideo, xmhd: vmhd || smhd };
-        }
-      }
-      return { tkhd, mdhd, hdlr, stsd, isVideo, xmhd: null };
-    }
-
-    const vTrakInfo = extractFromTrak(traks[0]);
-    const aTrakInfo = extractFromTrak(traks[1]);
-
-    // ---- Build new trak for each track ----
-    function buildTrak(info, samples, sampleCount) {
-      const stts = buildStts(samples);
-      const stsz = buildStsz(samples);
-      const stss = info.isVideo ? buildStss(samples) : null;
-      const ctts = buildCtts(samples);
-
-      // stsc: patch samples_per_chunk
-      const stsc = buildStsc();
-      // samples_per_chunk is at: box_header(8) + fullbox(4) + entry_count(4) + first_chunk(4) = offset 20
-      writeU32(stsc, 20, sampleCount);
-
-      const stco = buildStco(); // placeholder offset, patched later
-
-      // dinf > dref > url
-      const urlBox = makeFullBox('url ', 0, 1, new Uint8Array(0)); // flag 1 = self-contained
-      const drefData = new Uint8Array(4 + 4);
-      writeU32(drefData, 4, 1); // entry_count
-      const dref = makeBox('dref', drefData, urlBox);
-      const dinf = makeBox('dinf', dref);
-
-      const stblParts = [info.stsd, stts, stsc, stsz, stco];
-      if (stss) stblParts.push(stss);
-      if (ctts) stblParts.push(ctts);
-      const stbl = makeBox('stbl', ...stblParts);
-
-      const minf = makeBox('minf', info.xmhd, dinf, stbl);
-      const mdia = makeBox('mdia', info.mdhd, info.hdlr, minf);
-      const trak = makeBox('trak', info.tkhd, mdia);
-      return trak;
-    }
-
-    const newVTrak = buildTrak(vTrakInfo, vSamples, vSamples.length);
-    const newATrak = buildTrak(aTrakInfo, aSamples, aSamples.length);
-
-    // Patch durations in mvhd, tkhd, mdhd
-    // Get timescale from mdhd of each track
-    function getMdhdTimescale(mdhd) {
-      const v = mdhd[8];
-      return readU32(mdhd, v === 1 ? 28 : 20);
-    }
-    const vTimescale = getMdhdTimescale(vTrakInfo.mdhd);
-    const aTimescale = getMdhdTimescale(aTrakInfo.mdhd);
-    const vTotalDur = vSamples.reduce((s, x) => s + x.duration, 0);
-    const aTotalDur = aSamples.reduce((s, x) => s + x.duration, 0);
-
-    // Patch mdhd duration in each new trak
-    function patchMdhdDuration(trak, duration) {
-      // Find mdia > mdhd
-      const mdiaBox = findBox(trak, 'mdia', 8);
-      if (!mdiaBox) return;
-      const mdhdBox = findBox(trak, 'mdhd', mdiaBox.offset + 8, mdiaBox.offset + mdiaBox.size);
-      if (!mdhdBox) return;
-      const v = trak[mdhdBox.offset + 8];
-      writeU32(trak, mdhdBox.offset + (v === 1 ? 32 : 24), duration);
-    }
-
-    function patchTkhdDuration(trak, movieDuration) {
-      const tkhdBox = findBox(trak, 'tkhd', 8);
-      if (!tkhdBox) return;
-      const v = trak[tkhdBox.offset + 8];
-      writeU32(trak, tkhdBox.offset + (v === 1 ? 36 : 28), movieDuration);
-    }
-
-    patchMdhdDuration(newVTrak, vTotalDur);
-    patchMdhdDuration(newATrak, aTotalDur);
-
-    // Patch mvhd and tkhd durations (in movie timescale)
-    const mvhdV = existingMvhd[8];
-    const movieTimescale = readU32(existingMvhd, mvhdV === 1 ? 28 : 20);
-    const vMovieDur = Math.round(vTotalDur * movieTimescale / vTimescale);
-    const aMovieDur = Math.round(aTotalDur * movieTimescale / aTimescale);
-    const maxMovieDur = Math.max(vMovieDur, aMovieDur);
-    writeU32(existingMvhd, mvhdV === 1 ? 32 : 24, maxMovieDur);
-    patchTkhdDuration(newVTrak, vMovieDur);
-    patchTkhdDuration(newATrak, aMovieDur);
-
-    // Build new moov (NO mvex — this is a flat MP4)
-    const newMoov = makeBox('moov', existingMvhd, newVTrak, newATrak);
-
-    // ---- Assemble: ftyp + moov + mdat ----
-    const vFtypBox = findBox(videoUint8, 'ftyp');
-    const ftyp = vFtypBox ? videoUint8.slice(vFtypBox.offset, vFtypBox.offset + vFtypBox.size) : new Uint8Array(0);
-
-    const mdatPayload = cat(vData, aData);
-    const mdatBox = new Uint8Array(8 + mdatPayload.length);
-    writeU32(mdatBox, 0, mdatBox.length);
-    mdatBox[4]=0x6D; mdatBox[5]=0x64; mdatBox[6]=0x61; mdatBox[7]=0x74; // 'mdat'
-    mdatBox.set(mdatPayload, 8);
-
-    // ---- Patch stco offsets now that we know moov size ----
-    const videoDataOffset = ftyp.length + newMoov.length + 8; // +8 for mdat header
-    const audioDataOffset = videoDataOffset + vData.length;
-
-    // Find stco in each trak within newMoov and patch
-    function patchStcoInMoov(moov, trakIndex, offset) {
-      let trakCount = 0;
-      let p = 8;
-      while (p + 8 <= moov.length) {
-        const sz = readU32(moov, p);
-        if (sz < 8) break;
-        if (btype(moov, p + 4) === 'trak') {
-          if (trakCount === trakIndex) {
-            // Deep search for stco inside this trak
-            const stcoBox = (function findDeep(buf, type, start, end) {
-              let pos = start;
-              while (pos + 8 <= end) {
-                const s = readU32(buf, pos);
-                if (s < 8) break;
-                if (btype(buf, pos + 4) === type) return pos;
-                // Search inside container boxes
-                const inner = findDeep(buf, type, pos + 8, pos + s);
-                if (inner !== -1) return inner;
-                pos += s;
-              }
-              return -1;
-            })(moov, 'stco', p + 8, p + sz);
-            if (stcoBox !== -1) {
-              // stco: header(8) + fullbox(4) + entry_count(4) + offsets...
-              writeU32(moov, stcoBox + 16, offset);
-            }
+      function launch() {
+        while (!rejected && inFlight < concurrency && qIdx < queue.length) {
+          if (signal && signal.aborted) {
+            rejected = true;
+            reject(Object.assign(new Error('Cancelled'), { name: 'AbortError' }));
             return;
           }
-          trakCount++;
+          const job = queue[qIdx++];
+          inFlight++;
+          fetchWithRetry(job.st.track.segments[job.si], { signal }, signal, noteThrottle)
+            .then(r => {
+              if (!r.ok) throw new Error(`Segment failed: HTTP ${r.status} for ${job.st.track.segments[job.si]}`);
+              return r.arrayBuffer();
+            })
+            .then(job.st.decryptIfNeeded)
+            .then(buf => {
+              if (rejected) return;
+              job.st.orderedBufs[job.st.segStart + job.si] = buf;
+              done++;
+              reportProgress(`Downloading segments... (${done}/${totalSegs})`);
+              inFlight--;
+              if (inFlight === 0 && qIdx >= queue.length) resolve();
+              else launch();
+            })
+            .catch(err => {
+              if (rejected) return;
+              rejected = true;
+              reject(err);
+            });
         }
-        p += sz;
       }
-    }
+      launch();
+    });
 
-    patchStcoInMoov(newMoov, 0, videoDataOffset);
-    patchStcoInMoov(newMoov, 1, audioDataOffset);
-
-    return cat(ftyp, newMoov, mdatBox);
+    return trackStates.map(s => s.orderedBufs);
   }
+
+  // Mux separate video and audio fMP4 chunks into a single flat MP4.
+  // Off-loads the entire mux pipeline to a Web Worker (src/mux-worker.js) so
+  // the UI thread stays responsive on long recordings where mux previously
+  // froze the tab for several seconds. Each track is passed as the raw array
+  // of decrypted ArrayBuffers (`[init, ...mediaSegments]`) — the worker
+  // concatenates internally, avoiding a second copy on the UI thread.
+  //
+  // Note: Chrome refuses `new Worker('chrome-extension://...')` from a content
+  // script because the worker would run in the page's origin, not the
+  // extension's. Workaround: fetch the worker source via `chrome.runtime.getURL`
+  // (which content scripts CAN do because the file is in
+  // web_accessible_resources) and instantiate from a blob URL.
+  let _muxWorkerBlobUrl = null;
+  async function getMuxWorkerUrl() {
+    if (_muxWorkerBlobUrl) return _muxWorkerBlobUrl;
+    const resp = await fetch(chrome.runtime.getURL('mux-worker.js'));
+    if (!resp.ok) throw new Error(`mux-worker fetch failed: HTTP ${resp.status}`);
+    const src = await resp.text();
+    _muxWorkerBlobUrl = URL.createObjectURL(new Blob([src], { type: 'application/javascript' }));
+    return _muxWorkerBlobUrl;
+  }
+
+  async function muxTracks(videoChunks, audioChunks, onProgress) {
+    const workerUrl = await getMuxWorkerUrl();
+    return await new Promise((resolve, reject) => {
+      const worker = new Worker(workerUrl);
+      worker.onmessage = (event) => {
+        const msg = event.data;
+        if (msg.progress) {
+          onProgress(msg.progress.done, msg.progress.total, msg.progress.text);
+        } else if (msg.error) {
+          worker.terminate();
+          reject(new Error(msg.error));
+        } else if (msg.result) {
+          worker.terminate();
+          resolve(msg.result);
+        }
+      };
+      worker.onerror = (e) => {
+        worker.terminate();
+        reject(new Error(e.message || 'mux-worker crashed'));
+      };
+      // Transfer all underlying ArrayBuffers to the worker so the UI thread
+      // releases its references — peak memory drops by ~50% while muxing.
+      const transferables = [];
+      const videoBufs = videoChunks.map(b => {
+        const ab = b instanceof ArrayBuffer ? b : b.buffer;
+        transferables.push(ab);
+        return ab;
+      });
+      const audioBufs = audioChunks.map(b => {
+        const ab = b instanceof ArrayBuffer ? b : b.buffer;
+        transferables.push(ab);
+        return ab;
+      });
+      worker.postMessage({ video: videoBufs, audio: audioBufs }, transferables);
+    });
+  }
+
 
   async function triggerBrowserVideoDownload(format, filename, onProgress, signal) {
     onProgress(0, 1, 'Fetching manifest...');
@@ -1938,8 +1567,13 @@
           <div class="browser-dl-status" id="browserDlStatus"></div>
         </div>
 
-
-
+        <div class="video-parallel-row">
+          <label for="videoParallelSelect" class="video-parallel-label">Parallel segment downloads</label>
+          <select id="videoParallelSelect" class="video-parallel-select">
+            ${VIDEO_CONCURRENCY_OPTIONS.map(n => `<option value="${n}"${n === videoDownloadConcurrency ? ' selected' : ''}>${n}</option>`).join('')}
+          </select>
+          <span class="video-parallel-hint">total in flight &mdash; higher = faster, but more risk of throttling (429s are auto-retried)</span>
+        </div>
 
         <div class="modal-actions">
           <a class="modal-star-link" href="https://github.com/brendangooden/ms-teams-sharepoint-downloader" target="_blank" rel="noopener noreferrer" title="Star this project on GitHub">
@@ -1977,6 +1611,21 @@
       selectedBrowserFormat = 'video-audio';
       dlBtn.disabled = false;
       dlBtn.textContent = '\u2193 Download';
+    }
+
+    // Concurrency selector \u2014 reads/writes the module-scoped
+    // videoDownloadConcurrency. Persisted in chrome.storage.sync.
+    const parallelSel = modal.querySelector('#videoParallelSelect');
+    if (parallelSel) {
+      parallelSel.addEventListener('change', () => {
+        const n = parseInt(parallelSel.value, 10);
+        if (VIDEO_CONCURRENCY_OPTIONS.includes(n)) {
+          videoDownloadConcurrency = n;
+          if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.sync) {
+            chrome.storage.sync.set({ videoDownloadConcurrency: n });
+          }
+        }
+      });
     }
 
     dlBtn.addEventListener('click', async () => {
@@ -2073,6 +1722,15 @@
   function initialize() {
     if (__ttdInitDone) return;
     __ttdInitDone = true;
+
+    // Pull saved per-track concurrency from sync storage; fall back to the
+    // module default if absent or set to an unsupported value.
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.sync) {
+      chrome.storage.sync.get(['videoDownloadConcurrency'], (result) => {
+        const saved = parseInt(result.videoDownloadConcurrency, 10);
+        if (VIDEO_CONCURRENCY_OPTIONS.includes(saved)) videoDownloadConcurrency = saved;
+      });
+    }
 
     injectFloatingWidget();
 
