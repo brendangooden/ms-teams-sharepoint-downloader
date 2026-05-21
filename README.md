@@ -1,8 +1,17 @@
 # MS Teams / SharePoint / Stream — Video & Transcript Downloader (Chrome Extension)
 
+[![Chrome Web Store](https://img.shields.io/chrome-web-store/v/hmljlkhcebhkkhbbafiheolbneecoinp?label=chrome%20web%20store&logo=googlechrome&logoColor=white&color=4285F4)](https://chromewebstore.google.com/detail/ms-teams-transcript-downl/hmljlkhcebhkkhbbafiheolbneecoinp)
+[![Users](https://img.shields.io/chrome-web-store/users/hmljlkhcebhkkhbbafiheolbneecoinp?label=users&color=34A853)](https://chromewebstore.google.com/detail/ms-teams-transcript-downl/hmljlkhcebhkkhbbafiheolbneecoinp)
+[![Rating](https://img.shields.io/chrome-web-store/rating/hmljlkhcebhkkhbbafiheolbneecoinp?label=rating&color=FBBC04)](https://chromewebstore.google.com/detail/ms-teams-transcript-downl/hmljlkhcebhkkhbbafiheolbneecoinp/reviews)
+[![GitHub stars](https://img.shields.io/github/stars/brendangooden/ms-teams-sharepoint-downloader?style=flat&logo=github&label=stars&color=EA4335)](https://github.com/brendangooden/ms-teams-sharepoint-downloader/stargazers)
+[![License](https://img.shields.io/github/license/brendangooden/ms-teams-sharepoint-downloader?color=blue)](LICENSE)
+[![Manifest V3](https://img.shields.io/badge/manifest-v3-9333ea)](src/manifest.json)
+
 🌐 **Website:** [teamsvideotranscriptexporter.com](https://teamsvideotranscriptexporter.com) — features, screenshots, FAQ, install link
 
 Download videos and transcripts from MS Teams meeting recordings, SharePoint, and **Microsoft Stream** (videos uploaded to SharePoint/OneDrive and played through the Stream player) — even when the built-in download button is disabled.
+
+![Red Download Video and purple Download Transcript buttons added to the SharePoint command bar](demo-website/src/assets/screenshots/dark/recording.png)
 
 Works on:
 
@@ -30,10 +39,6 @@ Works on:
 ## Screenshots
 
 > Light-mode versions live next to these in `demo-website/src/assets/screenshots/light/`.
-
-### Teams / SharePoint recording page
-
-![Recording Webpage](demo-website/src/assets/screenshots/dark/recording.png)
 
 ### Video download modal
 
