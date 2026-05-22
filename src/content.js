@@ -997,20 +997,17 @@
         worker.terminate();
         reject(new Error(e.message || 'mux-worker crashed'));
       };
-      // Transfer all underlying ArrayBuffers to the worker so the UI thread
-      // releases its references — peak memory drops by ~50% while muxing.
-      const transferables = [];
-      const videoBufs = videoChunks.map(b => {
-        const ab = b instanceof ArrayBuffer ? b : b.buffer;
-        transferables.push(ab);
-        return ab;
-      });
-      const audioBufs = audioChunks.map(b => {
-        const ab = b instanceof ArrayBuffer ? b : b.buffer;
-        transferables.push(ab);
-        return ab;
-      });
-      worker.postMessage({ video: videoBufs, audio: audioBufs }, transferables);
+
+      const videoBufs = videoChunks.map(b => b.slice(0));
+      const audioBufs = audioChunks.map(b => b.slice(0));
+
+      try {
+        // Use 'video'/'audio' — that's what the worker destructures from event.data
+        worker.postMessage({ video: videoBufs, audio: audioBufs });
+      } catch (error) {
+        worker.terminate();
+        reject(error);
+      }
     });
   }
 
