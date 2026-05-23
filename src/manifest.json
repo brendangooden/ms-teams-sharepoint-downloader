@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "MS Teams Video & Transcript Downloader",
   "short_name": "Teams Downloader",
-  "version": "1.4.3",
+  "version": "1.5.0",
   "description": "Download MS Teams meeting videos and transcripts. Multiple formats (JSON, VTT, Grouped). In-browser.",
   "author": "Brendan Gooden",
   "homepage_url": "https://github.com/brendangooden/ms-teams-sharepoint-downloader",
