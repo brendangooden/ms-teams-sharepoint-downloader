@@ -2,3 +2,5 @@
 *.zip
 .claude/settings.local.json
 scripts/
+RELEASE_NOTES.md
+releases/

@@ -8,7 +8,7 @@ Guidance for Claude when working in this repo.
 - `src/key.pem` — local signing key. **Must not** ship in any release zip.
 - `scripts/` — repo utilities.
 - `demo-website/` — separate marketing site (Cloudflare Workers). Unrelated to the extension build.
-- `ms-teams-downloader-v<version>.zip` at repo root — Chrome Web Store upload artifact, one per release.
+- `releases/` — Chrome Web Store upload artifacts, one zip per release. Gitignored.
 
 ## Building a release zip
 
@@ -21,7 +21,7 @@ pwsh scripts/package-extension.ps1
 # Use -Force only if you intentionally want to overwrite an existing zip.
 ```
 
-Verify the result with `unzip -l ms-teams-downloader-v<version>.zip` — expect 6 entries (`icons/icon128.png`, `content.js`, `intercept.js`, `manifest.json`, `modal.css`, `mux-worker.js`) and no `key.pem`.
+Verify the result with `unzip -l releases/ms-teams-downloader-v<version>.zip` — expect 6 entries (`icons/icon128.png`, `content.js`, `intercept.js`, `manifest.json`, `modal.css`, `mux-worker.js`) and no `key.pem`.
 
 ## Don'ts
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env pwsh
-# Package the extension into ms-teams-downloader-v<version>.zip at the repo root.
+# Package the extension into releases/ms-teams-downloader-v<version>.zip.
 # Reads version from src/manifest.json. Refuses to overwrite an existing zip.
 #
 # Usage:
@@ -26,8 +26,18 @@ $manifest = Get-Content -Raw $manifestPath | ConvertFrom-Json
 $version = $manifest.version
 if (-not $version) { throw 'version missing from manifest.json' }
 
+$releasesDir = Join-Path $repoRoot 'releases'
+if (-not (Test-Path $releasesDir)) { New-Item -ItemType Directory -Path $releasesDir | Out-Null }
+
 $zipName = "ms-teams-downloader-v$version.zip"
-$zipPath = Join-Path $repoRoot $zipName
+$zipPath = Join-Path $releasesDir $zipName
+
+# Also clean up any stale zip at the old repo-root location.
+$legacyZipPath = Join-Path $repoRoot $zipName
+if (Test-Path $legacyZipPath) {
+    Remove-Item $legacyZipPath -Force
+    Write-Host "Removed legacy zip at repo root: $legacyZipPath" -ForegroundColor Yellow
+}
 
 if (Test-Path $zipPath) {
     if ($Force) {
