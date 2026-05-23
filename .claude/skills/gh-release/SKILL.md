@@ -1,6 +1,6 @@
 ---
 name: gh-release
-description: Cut a GitHub release for the Chrome extension — pre-flight checks, package zip, bump demo-website version refs, draft release notes with commit attribution, tag, push, create GH release with zip attached, and optionally upload to the Chrome Web Store. Use when user says "release", "ship a release", "cut v1.4.x", "make a GH release", or asks to publish a new extension version.
+description: Cut a GitHub release for the Chrome extension — pre-flight checks, package zip, bump demo-website version refs, draft release notes with commit attribution, tag, push, create GH release with zip attached, and optionally upload to the Chrome Web Store. Also handles publishing a previously-created draft via publish-release.ps1 (with optional CWS upload). Use when user says "release", "ship a release", "cut v1.4.x", "make a GH release", "publish the draft", or asks to publish a new extension version.
 ---
 
 # gh-release
@@ -176,6 +176,26 @@ pwsh .claude/skills/gh-release/scripts/cws-publish.ps1 `
 - `1` — failure (script throws); report to user.
 - `2` — credentials not configured in `releases/cws-publish.env`. Surface the script's output verbatim — it tells the user to run `cws-auth.ps1`. Do NOT treat as failure of the overall release; the GH release is already done.
 
+### 7b. Publishing a draft after review (`publish-release.ps1`)
+
+When the default workflow leaves a draft and the user later wants to ship it (typical: "publish v1.5.0 and push to CWS"), use the orchestrator instead of clicking the GitHub UI:
+
+```pwsh
+# GH only — flip the draft to published
+pwsh .claude/skills/gh-release/scripts/publish-release.ps1 -Version <version>
+
+# GH + CWS draft upload
+pwsh .claude/skills/gh-release/scripts/publish-release.ps1 -Version <version> -CwsPublish
+
+# GH + CWS upload + submit for review
+pwsh .claude/skills/gh-release/scripts/publish-release.ps1 -Version <version> -CwsSubmit
+
+# Submit to trusted testers track only
+pwsh .claude/skills/gh-release/scripts/publish-release.ps1 -Version <version> -CwsSubmit -Target trustedTesters
+```
+
+The script: looks up the existing release via `gh release view`, runs `gh release edit --draft=false [--latest]` (drops `--latest` if the version contains `-`, e.g. pre-release), then optionally invokes `cws-publish.ps1` with the matching flags. Idempotent — re-running on an already-published release is a no-op for the GH side. Exit-code semantics match `cws-publish.ps1` (0 ok, 2 not-configured, otherwise failure).
+
 ### 8. Post-flight reminders
 
 Print these to the user, verbatim. Adjust the CWS section based on what happened:
@@ -185,7 +205,11 @@ GH release: <url from gh output>
 Zip: <abs-path-to-zip>
 
 Next steps:
-  1. Review the draft release notes at the URL above. Click "Publish" when ready.
+  1. Review the draft release notes at the URL above. When ready, either:
+     - Click "Publish release" in the UI, or
+     - Run pwsh .claude/skills/gh-release/scripts/publish-release.ps1 -Version <version>
+       (add -CwsPublish or -CwsSubmit to push the zip to the Chrome Web Store
+       in the same step).
   2. <Chrome Web Store status — see below>
   3. (Optional) If marketing screenshots need updating for this version,
      update chrome-store/screenshots/ and chrome-store/description.md.
