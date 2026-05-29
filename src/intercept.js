@@ -42,7 +42,7 @@
     // "Anonymous or Email authenticated Guest User may not request tokens".
     if (url && typeof url === 'string' &&
         /\/_api\/v[0-9.]+\//.test(url) &&
-        url.includes('sharepoint.com')) {
+        /sharepoint(?:-mil)?\.(?:com|us)/.test(url)) {
       const auth = extractAuthorization(args);
       if (auth && /^Bearer\s+/i.test(auth)) {
         window.postMessage({ type: 'SP_API_BEARER', authorization: auth }, '*');

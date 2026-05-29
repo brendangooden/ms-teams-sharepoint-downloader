@@ -11,15 +11,21 @@
   ],
   "host_permissions": [
     "https://*.sharepoint.com/*",
+    "https://*.sharepoint.us/*",
+    "https://*.sharepoint-mil.us/*",
     "https://teams.microsoft.com/*",
-    "https://teams.cloud.microsoft/*"
+    "https://teams.cloud.microsoft/*",
+    "https://*.teams.microsoft.us/*"
   ],
   "content_scripts": [
     {
       "matches": [
         "https://*.sharepoint.com/*",
+        "https://*.sharepoint.us/*",
+        "https://*.sharepoint-mil.us/*",
         "https://teams.microsoft.com/*",
-        "https://teams.cloud.microsoft/*"
+        "https://teams.cloud.microsoft/*",
+        "https://*.teams.microsoft.us/*"
       ],
       "js": ["intercept.js"],
       "run_at": "document_start",
@@ -29,8 +35,11 @@
     {
       "matches": [
         "https://*.sharepoint.com/*",
+        "https://*.sharepoint.us/*",
+        "https://*.sharepoint-mil.us/*",
         "https://teams.microsoft.com/*",
-        "https://teams.cloud.microsoft/*"
+        "https://teams.cloud.microsoft/*",
+        "https://*.teams.microsoft.us/*"
       ],
       "js": ["content.js"],
       "css": ["modal.css"],
@@ -51,8 +60,11 @@
       "resources": ["intercept.js", "mux-worker.js"],
       "matches": [
         "https://*.sharepoint.com/*",
+        "https://*.sharepoint.us/*",
+        "https://*.sharepoint-mil.us/*",
         "https://teams.microsoft.com/*",
-        "https://teams.cloud.microsoft/*"
+        "https://teams.cloud.microsoft/*",
+        "https://*.teams.microsoft.us/*"
       ]
     }
   ]

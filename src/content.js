@@ -874,7 +874,9 @@
       let cryptoKey = null;
       if (track.encryption) {
         reportProgress(`Fetching encryption key${label}...`);
-        const init = track.encryption.keyUri.includes('svc.ms') && videoSpopActoken
+        let keyIsCrossOrigin = true;
+        try { keyIsCrossOrigin = new URL(track.encryption.keyUri, window.location.href).host !== window.location.host; } catch (_) {}
+        const init = keyIsCrossOrigin && videoSpopActoken
           ? { signal, headers: { 'x-spopactoken': videoSpopActoken } }
           : { signal };
         const keyResp = await fetchWithRetry(track.encryption.keyUri, init, signal, noteThrottle);
@@ -1378,7 +1380,7 @@
     // path check above on that frame's location) or a Teams-internal player.
     // Treating the top frame as a video page surfaces the widget over the
     // Teams chrome where it'll never receive a manifest and stays "disabled".
-    if (/^teams\./.test(loc.hostname) && window !== window.top) return true;
+    if ((/^teams\./.test(loc.hostname) || /(^|\.)teams\.microsoft\.(com|us)$/.test(loc.hostname)) && window !== window.top) return true;
     return false;
   }
 
