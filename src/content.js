@@ -659,13 +659,41 @@
     }
 
     try {
-      // Fetch the JSON version first (for generating all previews)
-      const jsonUrl = transcriptUrl.includes('?') 
-        ? `${transcriptUrl}&format=json` 
+      let jsonUrl = transcriptUrl.includes('?')
+        ? `${transcriptUrl}&format=json`
         : `${transcriptUrl}?format=json`;
-      
+
+      // Microsoft Defender for Cloud Apps / MCAS:
+      // SharePoint may return a temporaryDownloadUrl pointing to the
+      // original *.sharepoint.com host, while the authenticated browser
+      // session is running through *.sharepoint.com.mcas.ms.
+      //
+      // Only rewrite the final content request. Do not touch transcript
+      // discovery or metadata URLs.
+      try {
+        const parsedUrl = new URL(jsonUrl);
+
+        if (
+          window.location.hostname.endsWith('.sharepoint.com.mcas.ms') &&
+          parsedUrl.hostname.endsWith('.sharepoint.com')
+        ) {
+          parsedUrl.hostname = `${parsedUrl.hostname}.mcas.ms`;
+          jsonUrl = parsedUrl.href;
+
+          console.debug(
+            '[Transcript Downloader] Rewriting transcript URL through MCAS:',
+            jsonUrl
+          );
+        }
+      } catch (e) {
+        console.warn(
+          '[Transcript Downloader] Failed to rewrite transcript URL:',
+          e
+        );
+      }
+
       console.debug('[Transcript Downloader] Fetching JSON from:', jsonUrl);
-      
+
       const jsonResponse = await fetch(jsonUrl);
       if (!jsonResponse.ok) {
         throw new Error(`HTTP ${jsonResponse.status}: ${jsonResponse.statusText}`);

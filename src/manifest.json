@@ -11,15 +11,19 @@
   ],
   "host_permissions": [
     "https://*.sharepoint.com/*",
+    "https://*.sharepoint.com.mcas.ms/*",
     "https://teams.microsoft.com/*",
-    "https://teams.cloud.microsoft/*"
+    "https://teams.cloud.microsoft/*",
+    "https://teams.microsoft.com.mcas.ms/*"
   ],
   "content_scripts": [
     {
       "matches": [
         "https://*.sharepoint.com/*",
+        "https://*.sharepoint.com.mcas.ms/*",
         "https://teams.microsoft.com/*",
-        "https://teams.cloud.microsoft/*"
+        "https://teams.cloud.microsoft/*",
+        "https://teams.microsoft.com.mcas.ms/*"
       ],
       "js": ["intercept.js"],
       "run_at": "document_start",
@@ -29,8 +33,10 @@
     {
       "matches": [
         "https://*.sharepoint.com/*",
+        "https://*.sharepoint.com.mcas.ms/*",
         "https://teams.microsoft.com/*",
-        "https://teams.cloud.microsoft/*"
+        "https://teams.cloud.microsoft/*",
+        "https://teams.microsoft.com.mcas.ms/*"
       ],
       "js": ["content.js"],
       "css": ["modal.css"],
@@ -51,8 +57,10 @@
       "resources": ["intercept.js", "mux-worker.js"],
       "matches": [
         "https://*.sharepoint.com/*",
+        "https://*.sharepoint.com.mcas.ms/*",
         "https://teams.microsoft.com/*",
-        "https://teams.cloud.microsoft/*"
+        "https://teams.cloud.microsoft/*",
+        "https://teams.microsoft.com.mcas.ms/*"
       ]
     }
   ]
