@@ -895,12 +895,23 @@
     });
   }
 
-  // Fetch with retry on 429/503 + transient network errors. Honours the
-  // `Retry-After` header (seconds) if the server sends one; otherwise uses
-  // exponential backoff capped at 30s. Gives up after `maxAttempts`. The
-  // optional `onThrottle({attempt, delayMs, status})` callback lets the
-  // caller surface "throttled, backing off..." in the progress UI.
-  async function fetchWithRetry(url, init, signal, onThrottle, maxAttempts = 6) {
+  // Statuses worth retrying. 429 = throttle; 503 = transient overload. 408 =
+  // request timeout. 409 + other 5xx show up on the .../oneDrive.transcode
+  // segment endpoint for renditions SharePoint transcodes on demand — the
+  // native player rides these out by re-requesting, so we do too. These codes
+  // are undocumented for this internal endpoint, so treat them as generic
+  // "temporary, retry" rather than asserting a specific server-side cause.
+  function isRetriableStatus(status) {
+    return status === 408 || status === 409 || status === 429 || (status >= 500 && status <= 599);
+  }
+
+  // Fetch with retry on transient HTTP statuses (see isRetriableStatus) +
+  // transient network errors. Honours the `Retry-After` header (seconds) if the
+  // server sends one; otherwise uses exponential backoff capped at 30s. Gives up
+  // after `maxAttempts`. The optional `onThrottle({attempt, delayMs, status})`
+  // callback lets the caller surface "retrying, backing off..." in the progress
+  // UI.
+  async function fetchWithRetry(url, init, signal, onThrottle, maxAttempts = 8) {
     let attempt = 0;
     for (;;) {
       attempt++;
@@ -918,8 +929,7 @@
         await abortableSleep(delayMs, signal);
         continue;
       }
-      // 429 = throttle; 503 = transient overload. Anything else: surface to caller.
-      if ((resp.status === 429 || resp.status === 503) && attempt < maxAttempts) {
+      if (isRetriableStatus(resp.status) && attempt < maxAttempts) {
         const headerSecs = parseInt(resp.headers.get('Retry-After'), 10);
         const delayMs = Number.isFinite(headerSecs) && headerSecs > 0
           ? Math.min(headerSecs * 1000, 30000)
@@ -930,6 +940,18 @@
       }
       return resp;
     }
+  }
+
+  // Build the error message for a segment/init/key fetch that failed for good.
+  // A transient status that survived every retry gets a "temporary, try again"
+  // hint; anything else surfaces the bare code.
+  function segmentFailureMessage(what, status, url) {
+    const suffix = url ? ` for ${url}` : '';
+    if (isRetriableStatus(status)) {
+      return `${what} failed after repeated retries: HTTP ${status}${suffix}. ` +
+        `The server returned a temporary error — this usually clears in a few minutes, so wait and try the download again.`;
+    }
+    return `${what} failed: HTTP ${status}${suffix}`;
   }
 
   async function downloadDashSegments(tracks, onProgress, signal) {
@@ -967,7 +989,7 @@
           ? { signal, headers: { 'x-spopactoken': videoSpopActoken } }
           : { signal };
         const keyResp = await fetchWithRetry(track.encryption.keyUri, init, signal, noteThrottle);
-        if (!keyResp.ok) throw new Error(`Encryption key fetch failed: HTTP ${keyResp.status}`);
+        if (!keyResp.ok) throw new Error(segmentFailureMessage('Encryption key fetch', keyResp.status));
         const keyBuf = await keyResp.arrayBuffer();
         cryptoKey = await crypto.subtle.importKey('raw', keyBuf, { name: 'AES-CBC' }, false, ['decrypt']);
       }
@@ -985,7 +1007,7 @@
       if (track.initUrl) {
         reportProgress(`Fetching init segment${label}...`);
         const r = await fetchWithRetry(track.initUrl, { signal }, signal, noteThrottle);
-        if (!r.ok) throw new Error(`Init segment failed: HTTP ${r.status} for ${track.initUrl}`);
+        if (!r.ok) throw new Error(segmentFailureMessage('Init segment', r.status, track.initUrl));
         orderedBufs[0] = await decryptIfNeeded(await r.arrayBuffer());
         done++;
         segStart = 1;
@@ -1018,7 +1040,7 @@
           inFlight++;
           fetchWithRetry(job.st.track.segments[job.si], { signal }, signal, noteThrottle)
             .then(r => {
-              if (!r.ok) throw new Error(`Segment failed: HTTP ${r.status} for ${job.st.track.segments[job.si]}`);
+              if (!r.ok) throw new Error(segmentFailureMessage('Segment', r.status, job.st.track.segments[job.si]));
               return r.arrayBuffer();
             })
             .then(job.st.decryptIfNeeded)
