@@ -214,6 +214,49 @@
     return formatEntry(format).extension;
   }
 
+  // User suffix overrides, keyed by format, loaded in `initialize()`
+  // Persisted whenever the modal's suffix field changes
+  // A present key is used verbatim, including an empty string ("")
+  // Every read tests for key presence rather than truthiness
+  // A `||` fallback would silently restore the default on a manually cleared suffix
+  let filenameSuffixOverrides = {};
+
+  function hasSuffixOverride(format) {
+    return Object.prototype.hasOwnProperty.call(filenameSuffixOverrides, format);
+  }
+
+  // Effective suffix for a format: the override if one exists, else the default
+  // Runs through `sanitizeFilename` so a hand-edited or synced value can't
+  // introduce path separators
+  function getSuffixForFormat(format) {
+    return hasSuffixOverride(format)
+      ? sanitizeFilename(filenameSuffixOverrides[format])
+      : getDefaultSuffixForFormat(format);
+  }
+
+  function persistSuffixOverrides() {
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.sync) {
+      chrome.storage.sync.set({ filenameSuffixes: filenameSuffixOverrides });
+    }
+  }
+
+  // Storing a value equal to the default is recorded as "no override"
+  // Behaves exactly like pressing reset
+  function setSuffixOverride(format, value) {
+    const cleaned = sanitizeFilename(value);
+    if (cleaned === getDefaultSuffixForFormat(format)) {
+      delete filenameSuffixOverrides[format];
+    } else {
+      filenameSuffixOverrides[format] = cleaned;
+    }
+    persistSuffixOverrides();
+  }
+
+  function clearSuffixOverride(format) {
+    delete filenameSuffixOverrides[format];
+    persistSuffixOverrides();
+  }
+
   function updateButtonText(format) {
     const modalButton = document.querySelector('#modalDownload');
     if (!modalButton) return;
@@ -289,10 +332,25 @@
               value="${escapeHtml(autoTitle)}"
               required
             />
-            <span class="filename-suffix" id="filenameSuffix">_transcript</span>
+            <input
+              type="text"
+              id="filenameSuffix"
+              class="filename-suffix"
+              aria-label="Filename suffix"
+              spellcheck="false"
+              autocomplete="off"
+            />
+            <button
+              type="button"
+              class="filename-suffix-reset"
+              id="filenameSuffixReset"
+              title="Reset the suffix to the default for this format"
+              aria-label="Reset suffix to default"
+              hidden
+            >&#8634;</button>
             <span class="filename-extension" id="filenameExtension">.vtt</span>
           </div>
-          <div class="filename-hint">Enter a name for your transcript file</div>
+          <div class="filename-hint">Enter a name for your transcript file. The suffix is editable and remembered per format.</div>
         </div>
         
         <div class="modal-actions">
@@ -315,6 +373,35 @@
       e.target.value = sanitizeFilename(e.target.value);
     });
 
+    // Editable suffix
+    // Same blur-to-commit contract as the filename field
+    // The reset control only appears if the format carries an override
+    const suffixInput = modal.querySelector('#filenameSuffix');
+    const suffixReset = modal.querySelector('#filenameSuffixReset');
+
+    suffixInput.addEventListener('input', () => {
+      suffixInput.size = Math.max(suffixInput.value.length, 1);
+    });
+
+    suffixInput.addEventListener('blur', () => {
+      setSuffixOverride(selectedFormat, suffixInput.value);
+      renderSuffixField(selectedFormat);
+    });
+
+    // Enter commits rather than submitting
+    // The field sits inside the modal's filename row
+    suffixInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        suffixInput.blur();
+      }
+    });
+
+    suffixReset.addEventListener('click', () => {
+      clearSuffixOverride(selectedFormat);
+      renderSuffixField(selectedFormat);
+    });
+
     // Event listeners
     const options = modal.querySelectorAll('.format-option');
     options.forEach(option => {
@@ -333,8 +420,17 @@
     
     // Update filename suffix when format changes
     function updateFilenameSuffix(format) {
-      modal.querySelector('#filenameSuffix').textContent = getDefaultSuffixForFormat(format);
+      renderSuffixField(format);
       modal.querySelector('#filenameExtension').textContent = getExtensionForFormat(format);
+    }
+
+    // The suffix field is sized to its content so the row still reads as one
+    // filename rather than an input box wedged between two labels
+    function renderSuffixField(format) {
+      const value = getSuffixForFormat(format);
+      suffixInput.value = value;
+      suffixInput.size = Math.max(value.length, 1);
+      suffixReset.hidden = !hasSuffixOverride(format);
     }
     
     // Select default from storage (first-run default: vtt-grouped)
@@ -373,7 +469,8 @@
       
       filenameInput.classList.remove('error');
       modal.classList.remove('show');
-      proceedWithDownload(filename);
+      // Pass the field's live value rather than re-resolving from storage
+      proceedWithDownload(filename, suffixInput.value);
     });
     
     // Close on background click
@@ -738,7 +835,7 @@
   }
 
   // Proceed with download after format selection
-  function proceedWithDownload(customFilename) {
+  function proceedWithDownload(customFilename, customSuffix) {
     if (!transcriptData) {
       alert('No transcript data available');
       return;
@@ -754,7 +851,12 @@
       outputData = convertJSONToGrouped(transcriptData);
     }
 
-    const suffix = getDefaultSuffixForFormat(selectedFormat);
+    // `typeof` rather than `||` bcz an empty suffix is a valid choice
+    // A truthiness test would quietly restore the default for a cleared field
+    // Sanitized again because the caller may not have blurred before downloading
+    const suffix = sanitizeFilename(
+      typeof customSuffix === 'undefined' ? getSuffixForFormat(selectedFormat) : customSuffix
+    );
     const extension = getExtensionForFormat(selectedFormat);
 
     // Use custom filename from modal input
@@ -1988,12 +2090,18 @@
     // race). The intercept re-posts on this request.
     requestTranscriptContext();
 
-    // Pull saved per-track concurrency from sync storage; fall back to the
-    // module default if absent or set to an unsupported value.
+    // Pull saved per-track concurrency and filename suffix overrides from sync storage
+    // Fall back to the module defaults if absent or unusable
     if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.sync) {
-      chrome.storage.sync.get(['videoDownloadConcurrency'], (result) => {
+      chrome.storage.sync.get(['videoDownloadConcurrency', 'filenameSuffixes'], (result) => {
         const saved = parseInt(result.videoDownloadConcurrency, 10);
         if (VIDEO_CONCURRENCY_OPTIONS.includes(saved)) videoDownloadConcurrency = saved;
+        // Plain object check
+        // Sync storage can hand back anything a previous version (or another device) wrote
+        const suffixes = result.filenameSuffixes;
+        if (suffixes && typeof suffixes === 'object' && !Array.isArray(suffixes)) {
+          filenameSuffixOverrides = suffixes;
+        }
       });
     }
 
