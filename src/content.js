@@ -194,6 +194,26 @@
     return document.title;
   }
 
+  // Per-format filename parts that the modal preview and save path both read
+  const TRANSCRIPT_FORMATS = {
+    'json': { suffix: '_transcript', extension: '.json' },
+    'vtt': { suffix: '_transcript', extension: '.vtt' },
+    'vtt-grouped': { suffix: '_transcript_grouped', extension: '.txt' }
+  };
+
+  // Unknown formats resolve to the JSON entry like the old `proceedWithDownload`
+  function formatEntry(format) {
+    return TRANSCRIPT_FORMATS[format] || TRANSCRIPT_FORMATS['json'];
+  }
+
+  function getDefaultSuffixForFormat(format) {
+    return formatEntry(format).suffix;
+  }
+
+  function getExtensionForFormat(format) {
+    return formatEntry(format).extension;
+  }
+
   function updateButtonText(format) {
     const modalButton = document.querySelector('#modalDownload');
     if (!modalButton) return;
@@ -313,19 +333,8 @@
     
     // Update filename suffix when format changes
     function updateFilenameSuffix(format) {
-      const suffixSpan = modal.querySelector('#filenameSuffix');
-      const extensionSpan = modal.querySelector('#filenameExtension');
-      
-      if (format === 'json') {
-        suffixSpan.textContent = '_transcript';
-        extensionSpan.textContent = '.json';
-      } else if (format === 'vtt') {
-        suffixSpan.textContent = '_transcript';
-        extensionSpan.textContent = '.vtt';
-      } else if (format === 'vtt-grouped') {
-        suffixSpan.textContent = '_transcript_grouped';
-        extensionSpan.textContent = '.txt';
-      }
+      modal.querySelector('#filenameSuffix').textContent = getDefaultSuffixForFormat(format);
+      modal.querySelector('#filenameExtension').textContent = getExtensionForFormat(format);
     }
     
     // Select default from storage (first-run default: vtt-grouped)
@@ -736,20 +745,17 @@
     }
 
     let outputData = transcriptData; // JSON by default
-    let extension = '.json';
-    let suffix = '_transcript';
-    
+
     // Convert based on selected format
     if (selectedFormat === 'vtt') {
       outputData = vttData;
-      extension = '.vtt';
-      suffix = '_transcript';
     } else if (selectedFormat === 'vtt-grouped') {
       // Convert JSON to grouped format
       outputData = convertJSONToGrouped(transcriptData);
-      extension = '.txt';
-      suffix = '_transcript_grouped';
     }
+
+    const suffix = getDefaultSuffixForFormat(selectedFormat);
+    const extension = getExtensionForFormat(selectedFormat);
 
     // Use custom filename from modal input
     // Also applied on blur to display exactly the base name to be saved to disk
