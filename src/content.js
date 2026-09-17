@@ -176,6 +176,13 @@
     return div.innerHTML;
   }
 
+  // Replacing everything outside [A-Za-z0-9 _-] neutralises path separators
+  // (`/ \ :`), the Windows-illegal set (`* ? " < > |`), and leading/trailing dots.
+  // Safe to apply multiple times. Both on blur and at download time.
+  function sanitizeFilename(name) {
+    return String(name == null ? '' : name).replace(/[^a-z0-9\s_-]/gi, '_').trim();
+  }
+
   // Best available base name for pre-filling the download filename fields.
   // Prefers g_fileInfo.displayName (relayed from the MAIN world by intercept.js)
   // because document.title is the Teams shell title inside the recap embed, not
@@ -218,7 +225,7 @@
     }
     
     // Get auto-detected filename
-    const autoTitle = getDefaultBaseName().replace(/[^a-z0-9\s]/gi, '_').trim();
+    const autoTitle = sanitizeFilename(getDefaultBaseName());
     const displayTitle = autoTitle || '[Not detected]';
     
     modal.innerHTML = `
@@ -251,7 +258,7 @@
         <div class="filename-section">
           <label for="filenameInput" class="filename-label">
             <span class="label-text">Filename:</span>
-            <span class="auto-detected">(Auto-detected: ${displayTitle})</span>
+            <span class="auto-detected">(Auto-detected: ${escapeHtml(displayTitle)})</span>
           </label>
           <div class="filename-input-container">
             <input 
@@ -259,7 +266,7 @@
               id="filenameInput" 
               class="filename-input" 
               placeholder="Enter filename" 
-              value="${autoTitle}"
+              value="${escapeHtml(autoTitle)}"
               required
             />
             <span class="filename-suffix" id="filenameSuffix">_transcript</span>
@@ -282,6 +289,12 @@
     
     document.body.appendChild(modal);
     
+    // Keep the field showing exactly the base name to be saved to disk
+    // Run on blur rather than on input to not fight the user mid-type
+    modal.querySelector('#filenameInput').addEventListener('blur', (e) => {
+      e.target.value = sanitizeFilename(e.target.value);
+    });
+
     // Event listeners
     const options = modal.querySelectorAll('.format-option');
     options.forEach(option => {
@@ -739,7 +752,8 @@
     }
 
     // Use custom filename from modal input
-    const sanitizedFilename = customFilename.replace(/[^a-z0-9\s]/gi, '_').toLowerCase();
+    // Also applied on blur to display exactly the base name to be saved to disk
+    const sanitizedFilename = sanitizeFilename(customFilename);
     const filename = `${sanitizedFilename}${suffix}${extension}`;
 
     // Download
@@ -1288,7 +1302,7 @@
       throw new Error('Format not supported for browser download: ' + format);
     }
 
-    const safeFilename = filename.replace(/[^a-z0-9\s_-]/gi, '_');
+    const safeFilename = sanitizeFilename(filename);
     const trackData = await downloadDashSegments(tracksToDownload, onProgress, signal);
 
     if (isSeparate) {
@@ -1743,7 +1757,7 @@
   }
 
   function getVideoFilename() {
-    return getDefaultBaseName().replace(/[^a-z0-9\s]/gi, '_').trim() || 'video';
+    return sanitizeFilename(getDefaultBaseName()) || 'video';
   }
 
   function createVideoModal() {
@@ -1822,6 +1836,11 @@
     `;
 
     document.body.appendChild(modal);
+
+    // Mirror the transcript modal to display exactly the base name to be written
+    modal.querySelector('#videoFilenameInput').addEventListener('blur', (e) => {
+      e.target.value = sanitizeFilename(e.target.value);
+    });
 
     let abortController = null;
 
