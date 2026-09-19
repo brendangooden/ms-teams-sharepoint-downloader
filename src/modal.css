@@ -344,7 +344,53 @@
   font-size: 14px;
   font-family: monospace;
   white-space: nowrap;
+}
+
+.filename-extension {
   user-select: none;
+}
+
+/* The suffix is an editable input styled to read as static text so the row still looks like one filename
+   The dashed underline on hover/focus is the only hint that it can be typed into. */
+.filename-suffix {
+  flex: 0 0 auto;
+  border: none;
+  border-bottom: 1px dashed transparent;
+  outline: none;
+  padding: 0;
+  background: transparent;
+  cursor: text;
+  transition: border-bottom-color 0.2s ease, color 0.2s ease;
+}
+
+.filename-suffix:hover,
+.filename-suffix:focus {
+  color: var(--ttd-text);
+  border-bottom-color: var(--ttd-text-dim);
+}
+
+.filename-suffix-reset {
+  flex: 0 0 auto;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ttd-text-dim);
+  font-size: 14px;
+  line-height: 1;
+  padding: 3px 5px;
+  cursor: pointer;
+  transition: color 0.2s ease, background 0.2s ease;
+}
+
+.filename-suffix-reset:hover {
+  color: var(--ttd-accent);
+  background: var(--ttd-bg-elevated);
+}
+
+/* Explicit bcz the class above sets a display-affecting box model
+   The [hidden] attribute alone would lose to it */
+.filename-suffix-reset[hidden] {
+  display: none;
 }
 
 .filename-hint {
