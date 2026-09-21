@@ -14,6 +14,13 @@
   // Same-origin oneDrive.transcode segment URL captured from the player's
   // Web Worker (Stream no longer always issues a videomanifest request).
   let videoTranscodeUrl = null;
+  const videoTranscodeTracks = {};
+  let videoTranscodePpd = null;
+  let transcodeSessionLogged = false;
+  let capturedDashXml = null;
+  let capturedDashXmlUrl = null;
+  let capturedCrypto = { iv: null, kid: null };
+  let videoKeyUrl = null;
   // Bearer token captured from the player's own videomanifest fetch. Microsoft's
   // .svc.ms CDN now requires this `x-spopactoken` header in addition to the
   // P1-P4 query-string signature, otherwise the request returns HTTP 401 with
@@ -79,12 +86,35 @@
     return svcMsFetchInit(init);
   }
 
+  function isUnsignedTranscodeIndex(url) {
+    try {
+      const u = new URL(url);
+      if (!/oneDrive\.transcode|videotranscode/i.test(u.pathname)) return false;
+      const part = (u.searchParams.get('part') || '').toLowerCase();
+      if (part && part !== 'index') return false;
+      const fmt = (u.searchParams.get('format') || '').toLowerCase();
+      if (fmt && fmt !== 'dash') return false;
+      return !u.searchParams.get('P1') && !u.searchParams.get('p1');
+    } catch (_) {
+      return false;
+    }
+  }
+
   function isVideoSourceReady() {
-    return !!(videoManifestUrl || videoTranscodeUrl);
+    return !!(videoManifestUrl || videoTranscodeUrl || capturedDashXml);
   }
 
   function applyVideoManifest(incoming, spopactoken) {
     if (!incoming || typeof incoming !== 'string') return false;
+    if (isUnsignedTranscodeIndex(incoming)) {
+      if (spopactoken) videoSpopActoken = spopactoken;
+      return false;
+    }
+    if (videoManifestUrl && /videomanifest/i.test(videoManifestUrl) &&
+        /oneDrive\.transcode/i.test(incoming)) {
+      if (spopactoken) videoSpopActoken = spopactoken;
+      return false;
+    }
     videoManifestUrl = incoming;
     if (spopactoken) videoSpopActoken = spopactoken;
     console.log('[Transcript Downloader] Received video manifest URL:', videoManifestUrl,
@@ -93,13 +123,44 @@
     return true;
   }
 
+  function ingestTranscodeUrl(incoming) {
+    try {
+      const u = new URL(incoming);
+      const track = u.searchParams.get('track');
+      const quality = u.searchParams.get('quality');
+      const wsd = parseInt(u.searchParams.get('wsd'), 10);
+      const ppd = parseInt(u.searchParams.get('ppd'), 10);
+      if (ppd) videoTranscodePpd = ppd;
+      if ((track === 'video' || track === 'audio') && wsd) {
+        videoTranscodeTracks[track] = {
+          quality: quality || (track === 'video' ? 'vcopy' : 'audcopy'),
+          wsd: wsd
+        };
+      }
+    } catch (_) { /* ignore malformed transcode URLs */ }
+  }
+
   function applyVideoTranscode(incoming, spopactoken) {
     if (!incoming || typeof incoming !== 'string') return false;
     videoTranscodeUrl = incoming;
+    ingestTranscodeUrl(incoming);
     if (spopactoken) videoSpopActoken = spopactoken;
-    console.log('[Transcript Downloader] Received oneDrive.transcode URL');
+    if (!transcodeSessionLogged) {
+      transcodeSessionLogged = true;
+      console.log('[Transcript Downloader] Received oneDrive.transcode session');
+    }
     updateFloatingWidgetState();
     return true;
+  }
+
+  function applyCrypto(iv, kid, keyHex) {
+    if (iv) capturedCrypto.iv = iv;
+    if (kid) capturedCrypto.kid = kid;
+    if (keyHex) capturedCrypto.keyHex = keyHex;
+    if (iv || kid || keyHex) {
+      console.log('[Transcript Downloader] Captured stream crypto',
+        iv ? '(iv)' : '', kid ? '(kid)' : '', keyHex ? '(key)' : '');
+    }
   }
 
   function syncVideoSourceFromDom() {
@@ -108,10 +169,15 @@
       const manifest = root.getAttribute('data-ttd-video-manifest');
       const transcode = root.getAttribute('data-ttd-video-transcode');
       const token = root.getAttribute('data-ttd-spop-token');
+      const iv = root.getAttribute('data-ttd-crypto-iv');
+      const kid = root.getAttribute('data-ttd-crypto-kid');
+      const keyUrl = root.getAttribute('data-ttd-video-key');
       let changed = false;
       if (manifest && manifest !== videoManifestUrl) changed = applyVideoManifest(manifest, token) || changed;
       else if (token && !videoSpopActoken) videoSpopActoken = token;
       if (transcode && transcode !== videoTranscodeUrl) changed = applyVideoTranscode(transcode, token) || changed;
+      if (iv || kid) applyCrypto(iv, kid);
+      if (keyUrl) videoKeyUrl = keyUrl;
       return changed || isVideoSourceReady();
     } catch (_) {
       return isVideoSourceReady();
@@ -124,7 +190,8 @@
 
   const TTD_RELAY_TYPES = new Set([
     'TRANSCRIPT_METADATA', 'TRANSCRIPT_CONTEXT', 'SP_API_BEARER',
-    'SPOP_ACTOKEN', 'VIDEO_MANIFEST_URL', 'VIDEO_TRANSCODE_URL'
+    'SPOP_ACTOKEN', 'VIDEO_MANIFEST_URL', 'VIDEO_TRANSCODE_URL',
+    'VIDEO_DASH_XML', 'VIDEO_CRYPTO', 'VIDEO_KEY_URL'
   ]);
 
   // Listen for messages from the intercept.js script running in MAIN world
@@ -170,6 +237,23 @@
 
     if (event.data.type === 'VIDEO_TRANSCODE_URL') {
       applyVideoTranscode(event.data.transcodeUrl, event.data.spopactoken || null);
+    }
+
+    if (event.data.type === 'VIDEO_DASH_XML' && event.data.xmlText) {
+      capturedDashXml = event.data.xmlText;
+      capturedDashXmlUrl = event.data.manifestUrl || capturedDashXmlUrl;
+      if (event.data.spopactoken) videoSpopActoken = event.data.spopactoken;
+      console.log('[Transcript Downloader] Captured DASH manifest XML from player');
+      updateFloatingWidgetState();
+    }
+
+    if (event.data.type === 'VIDEO_CRYPTO') {
+      applyCrypto(event.data.iv || null, event.data.kid || null, event.data.keyHex || null);
+    }
+
+    if (event.data.type === 'VIDEO_KEY_URL' && event.data.keyUrl) {
+      videoKeyUrl = event.data.keyUrl;
+      if (event.data.spopactoken) videoSpopActoken = event.data.spopactoken;
     }
   });
 
@@ -812,32 +896,10 @@
       }
     }
 
-    if (videoManifestUrl) {
+    if (videoManifestUrl && !isUnsignedTranscodeIndex(videoManifestUrl) &&
+        !/oneDrive\.transcode/i.test(videoManifestUrl)) {
       const hit = await attempt(videoManifestUrl, 'Fetching manifest...');
       if (hit) { videoManifestUrl = hit.url; return hit; }
-    }
-
-    if (videoTranscodeUrl) {
-      const index = transcodeUrlToIndex(videoTranscodeUrl);
-      const hit = await attempt(index, 'Fetching transcode index...');
-      if (hit) { videoManifestUrl = hit.url; return hit; }
-    }
-
-    const ctx = deriveTranscriptContext();
-    const origin = window.location.origin;
-    const site = ctx.sitePath || '';
-    if (ctx.driveId && ctx.itemId) {
-      const constructed = [
-        `${origin}${site}/_api/v2.1/drives/${ctx.driveId}/items/${ctx.itemId}/content?format=dash`,
-        `${origin}/_api/v2.1/drives/${ctx.driveId}/items/${ctx.itemId}/content?format=dash`,
-        `${origin}/_api_cached/v2.1/drives/${ctx.driveId}/items/${ctx.itemId}/oneDrive.transcode?version=Published&part=index&format=dash`,
-        `${origin}${site}/_api/v2.1/drives/${ctx.driveId}/items/${ctx.itemId}/oneDrive.transcode?version=Published&part=index&format=dash`
-      ].map((u) => copyCdnSigParams(videoTranscodeUrl || videoManifestUrl, u));
-
-      for (const url of constructed) {
-        const hit = await attempt(url, 'Requesting stream index from SharePoint...');
-        if (hit) { videoManifestUrl = hit.url; return hit; }
-      }
     }
 
     throw new Error(
@@ -1223,6 +1285,125 @@
     return out;
   }
 
+  function transcodeUrlWith(baseUrl, overrides) {
+    const u = new URL(baseUrl);
+    Object.keys(overrides).forEach((k) => {
+      const v = overrides[k];
+      if (v == null || v === '') u.searchParams.delete(k);
+      else u.searchParams.set(k, String(v));
+    });
+    return u.toString();
+  }
+
+  function transcodeKeyCandidates() {
+    const out = [];
+    if (videoKeyUrl) out.push(videoKeyUrl);
+    const bases = [videoTranscodeUrl, videoManifestUrl].filter(Boolean);
+    for (const base of bases) {
+      try {
+        const u = new URL(base);
+        if (!/oneDrive\.transcode|videotranscode|videomanifest/i.test(u.href)) continue;
+        u.searchParams.set('part', 'key');
+        ['track', 'quality', 'segmentTime', 'headerOffset', 'headerSize',
+          'wsd', 'ppd', 'ppst', 'msvb', 'altTranscode', 'format'].forEach((k) => u.searchParams.delete(k));
+        if (capturedCrypto.kid && !u.searchParams.get('kid')) u.searchParams.set('kid', capturedCrypto.kid);
+        out.push(u.toString());
+      } catch (_) { /* skip */ }
+    }
+    return [...new Set(out)];
+  }
+
+  function transcodeEncryptionEnabled() {
+    if (!videoTranscodeUrl) return false;
+    try {
+      return new URL(videoTranscodeUrl).searchParams.get('enableEncryption') === '1';
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function encryptionForTranscode() {
+    const ivHex = capturedCrypto.iv;
+    if (!ivHex) return null;
+    const iv = hexToBytes(String(ivHex).replace(/^0x/i, ''));
+    const keyUris = transcodeKeyCandidates();
+    if (!keyUris.length && !capturedCrypto.keyHex) return null;
+    const extra = { scheme: 'aes-128-cbc', keyUri: keyUris[0] || null, keyUris: keyUris, iv: iv };
+    if (capturedCrypto.keyHex) {
+      extra.keyBytes = hexToBytes(String(capturedCrypto.keyHex).replace(/^0x/i, ''));
+    }
+    return extra;
+  }
+
+  function overlayTranscodeEncryption(tracks) {
+    const extra = encryptionForTranscode();
+    if (!extra) return tracks;
+    tracks.forEach((t) => {
+      if (!t.encryption) {
+        t.encryption = extra;
+        return;
+      }
+      const uris = t.encryption.keyUris || [t.encryption.keyUri];
+      extra.keyUris.forEach((u) => { if (u && !uris.includes(u)) uris.push(u); });
+      t.encryption.keyUris = uris;
+      if (!t.encryption.iv && extra.iv) t.encryption.iv = extra.iv;
+      if (!t.encryption.keyBytes && extra.keyBytes) t.encryption.keyBytes = extra.keyBytes;
+    });
+    return tracks;
+  }
+
+  function buildTracksFromTranscode() {
+    if (!videoTranscodeUrl) return [];
+    let ppd = videoTranscodePpd;
+    let headerOffset = null;
+    let headerSize = null;
+    try {
+      const u = new URL(videoTranscodeUrl);
+      if (!ppd) ppd = parseInt(u.searchParams.get('ppd'), 10);
+      headerOffset = u.searchParams.get('headerOffset');
+      headerSize = u.searchParams.get('headerSize');
+    } catch (_) {
+      return [];
+    }
+    if (!ppd) return [];
+    const encryption = encryptionForTranscode();
+    const tracks = [];
+    ['video', 'audio'].forEach((type) => {
+      const meta = videoTranscodeTracks[type];
+      if (!meta || !meta.wsd) return;
+      const quality = meta.quality || (type === 'video' ? 'vcopy' : 'audcopy');
+      const count = Math.ceil(ppd / meta.wsd);
+      const common = {
+        format: 'fmp4',
+        track: type,
+        quality: quality,
+        headerOffset: headerOffset,
+        headerSize: headerSize,
+        wsd: meta.wsd,
+        ppd: ppd
+      };
+      const initUrl = transcodeUrlWith(videoTranscodeUrl, Object.assign({}, common, {
+        part: 'initsegment',
+        segmentTime: null
+      }));
+      const segments = [];
+      for (let i = 0; i < count; i++) {
+        segments.push(transcodeUrlWith(videoTranscodeUrl, Object.assign({}, common, {
+          part: 'mediasegment',
+          segmentTime: i * meta.wsd
+        })));
+      }
+      tracks.push({
+        type: type,
+        mimeType: type === 'video' ? 'video/mp4' : 'audio/mp4',
+        initUrl: initUrl,
+        segments: segments,
+        encryption: encryption
+      });
+    });
+    return tracks;
+  }
+
   // Abortable sleep — resolves after `ms` unless `signal` aborts first.
   function abortableSleep(ms, signal) {
     return new Promise((resolve, reject) => {
@@ -1332,11 +1513,28 @@
       let cryptoKey = null;
       if (track.encryption) {
         reportProgress(`Fetching encryption key${label}...`);
-        const init = dashFetchInit(track.encryption.keyUri, { signal });
-        const keyResp = await fetchWithRetry(track.encryption.keyUri, init, signal, noteThrottle);
-        if (!keyResp.ok) throw new Error(segmentFailureMessage('Encryption key fetch', keyResp.status));
-        const keyBuf = await keyResp.arrayBuffer();
-        cryptoKey = await crypto.subtle.importKey('raw', keyBuf, { name: 'AES-CBC' }, false, ['decrypt']);
+        if (track.encryption.keyBytes) {
+          cryptoKey = await crypto.subtle.importKey(
+            'raw', track.encryption.keyBytes, { name: 'AES-CBC' }, false, ['decrypt']
+          );
+        } else {
+          const uris = (track.encryption.keyUris && track.encryption.keyUris.length)
+            ? track.encryption.keyUris
+            : [track.encryption.keyUri];
+          let keyBuf = null;
+          let lastStatus = null;
+          for (const uri of uris) {
+            if (!uri) continue;
+            const keyResp = await fetchWithRetry(uri, dashFetchInit(uri, { signal }), signal, noteThrottle);
+            lastStatus = keyResp.status;
+            if (keyResp.ok) {
+              keyBuf = await keyResp.arrayBuffer();
+              break;
+            }
+          }
+          if (!keyBuf) throw new Error(segmentFailureMessage('Encryption key fetch', lastStatus));
+          cryptoKey = await crypto.subtle.importKey('raw', keyBuf, { name: 'AES-CBC' }, false, ['decrypt']);
+        }
       }
 
       async function decryptIfNeeded(buf) {
@@ -1555,27 +1753,79 @@
 
   async function triggerBrowserVideoDownload(format, filename, onProgress, signal) {
     onProgress(0, 1, 'Fetching manifest...');
-    const resolved = await resolveDashManifest(signal, onProgress);
-    const xmlText = resolved.xmlText;
-    videoManifestUrl = resolved.url;
+    syncVideoSourceFromDom();
+    requestTranscriptContext();
+    requestPlaybackAuth();
+    await new Promise((r) => {
+      const start = Date.now();
+      const tick = setInterval(() => {
+        syncVideoSourceFromDom();
+        const haveAv = !!(videoTranscodeTracks.video && videoTranscodeTracks.audio);
+        const needIv = transcodeEncryptionEnabled() && !capturedCrypto.iv;
+        const ready = capturedDashXml || (haveAv && !needIv);
+        if (ready || Date.now() - start > 2500) {
+          clearInterval(tick);
+          r();
+        }
+      }, 50);
+    });
 
-    onProgress(0, 1, 'Parsing manifest...');
-    const allTracks = parseDashManifest(xmlText, videoManifestUrl);
+    let xmlText = capturedDashXml || '';
+    let allTracks = [];
+
+    if (xmlText) {
+      const base = capturedDashXmlUrl || videoManifestUrl || videoTranscodeUrl || window.location.href;
+      videoManifestUrl = base;
+      onProgress(0, 1, 'Parsing captured manifest...');
+      allTracks = parseDashManifest(xmlText, base);
+    }
+
+    if (!allTracks.length) {
+      allTracks = buildTracksFromTranscode();
+      if (allTracks.length) {
+        xmlText = '';
+        onProgress(0, 1, 'Using captured transcode session...');
+        console.log('[Transcript Downloader] Building download from transcode tracks:',
+          allTracks.map((t) => t.type + ':' + t.segments.length).join(', '));
+      }
+    }
+
+    if (!allTracks.length) {
+      try {
+        const resolved = await resolveDashManifest(signal, onProgress);
+        xmlText = resolved.xmlText;
+        videoManifestUrl = resolved.url;
+        onProgress(0, 1, 'Parsing manifest...');
+        allTracks = parseDashManifest(xmlText, videoManifestUrl);
+      } catch (err) {
+        allTracks = buildTracksFromTranscode();
+        if (!allTracks.length) throw err;
+        xmlText = '';
+      }
+    }
     if (!allTracks.length) throw new Error('No tracks found in manifest');
+    overlayTranscodeEncryption(allTracks);
+
+    if (transcodeEncryptionEnabled() && allTracks.some((t) => !t.encryption)) {
+      throw new Error(
+        'This recording is encrypted, but the AES key/IV was not captured. Play from the start for a few seconds, then retry.'
+      );
+    }
 
     // Detect TRUE hard-DRM (Widevine / PlayReady / FairPlay) via the
     // ContentProtection schemeIdUri UUIDs. We DON'T fail on bare
     // <ContentProtection> presence — Microsoft applies DASH-SEA (AES-128-CBC
     // with HTTP-fetchable keys, schemeIdUri="urn:mpeg:dash:sea:..." ) to
-    // SharePoint Stream videos, which IS still client-decryptable (just not
-    // yet implemented here). Only hard CDM-required schemes are unrecoverable.
+    // SharePoint Stream videos, which IS still client-decryptable. Only hard
+    // CDM-required schemes are unrecoverable.
     const HARD_DRM_SCHEMES = [
       'edef8ba9-79d6-4ace-a3c8-27dcd51d21ed', // Widevine
       '9a04f079-9840-4286-ab92-e65be0885f95', // PlayReady
       '94ce86fb-07ff-4f43-adb8-93d2fa968ca2'  // FairPlay
     ];
-    const cpSchemes = [...xmlText.matchAll(/<ContentProtection\b[^>]*schemeIdUri="([^"]+)"/gi)]
-      .map(m => m[1].toLowerCase());
+    const cpSchemes = xmlText
+      ? [...xmlText.matchAll(/<ContentProtection\b[^>]*schemeIdUri="([^"]+)"/gi)].map(m => m[1].toLowerCase())
+      : [];
     const hasHardDrm = cpSchemes.some(s =>
       HARD_DRM_SCHEMES.some(uuid => s.includes(uuid))
     );
