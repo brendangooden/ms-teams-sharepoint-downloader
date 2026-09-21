@@ -666,6 +666,23 @@
     });
   }
 
+  // Resolve once we have a video manifest URL, or after `timeoutMs`.
+  // Re-requests the context (covers the load-order race) then polls the
+  // module-scoped state the message handler populates.
+  function waitForVideoManifest(timeoutMs) {
+    return new Promise((resolve) => {
+      if (videoManifestUrl) { resolve(true); return; }
+      requestTranscriptContext();
+      const start = Date.now();
+      const iv = setInterval(() => {
+        if (videoManifestUrl || Date.now() - start > timeoutMs) {
+          clearInterval(iv);
+          resolve(!!videoManifestUrl);
+        }
+      }, 100);
+    });
+  }
+
   // Fetch transcript metadata directly from /_api/v2.1/.../media/transcripts.
   // SharePoint Stream only fires this request when the user opens the Transcript
   // panel, so if the user clicks our Download button before doing so we have to
@@ -1849,11 +1866,17 @@
     return true;
   }
 
-  function handleVideoDownloadClick(event) {
+  async function handleVideoDownloadClick(event) {
     event.preventDefault();
     event.stopPropagation();
 
     console.log('[Transcript Downloader] Video download button clicked');
+
+    // If the manifest was not captured yet, ask the MAIN world to re-send
+    // context and wait briefly before failing.
+    if (!videoManifestUrl) {
+      await waitForVideoManifest(1500);
+    }
 
     if (!videoManifestUrl) {
       alert('Video manifest URL not captured yet. Please wait a moment and try again, or refresh the page.');

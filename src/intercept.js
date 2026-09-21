@@ -33,7 +33,14 @@
 
   window.fetch = async function(...args) {
     const response = await originalFetch.apply(this, args);
-    const url = args[0];
+    const rawUrl = args[0];
+    const url = (typeof rawUrl === 'string')
+      ? rawUrl
+      : (rawUrl && typeof rawUrl === 'object' && rawUrl.url)
+        ? rawUrl.url
+        : (rawUrl instanceof URL)
+          ? rawUrl.href
+          : String(rawUrl || '');
 
     // Capture the SharePoint Stream API bearer token whenever the player hits a
     // `/_api/v2.x/...` endpoint on this host. The same token authenticates
@@ -86,14 +93,10 @@
     }
 
     // Detect videomanifest URLs for video download.
-    // Microsoft has rolled out "TempAuthRemoval" on the .svc.ms media CDN. The
-    // P1-P4 query-string signature alone isn't enough anymore; the CDN now
-    // also requires an `x-spopactoken` bearer header (issued for the
-    // "MediaTA" app). Without it we get HTTP 401 + x-errorcode: NoAccessToken.
-    // Capture the player's token here so content.js can replay it on its own
-    // fetches.
-    if (url && typeof url === 'string' && url.includes('videomanifest') &&
-        !/tempauth/i.test(url)) {
+    // Capture the manifest URL whenever requested. If an x-spopactoken header
+    // is present (for MediaTA bearer auth on newer tenants), record it so
+    // content.js can replay it.
+    if (url && typeof url === 'string' && url.includes('videomanifest')) {
       let manifestUrl = url;
       // Trim URL at index&format=dash if present (keep up to and including that part)
       const dashIndex = manifestUrl.indexOf('index&format=dash');
@@ -124,7 +127,7 @@
 
     try {
       const urlObj = new URL(transformUrl);
-      urlObj.pathname = urlObj.pathname.replace(/\/transform\/.*$/, '/transform/videomanifest');
+      urlObj.pathname = urlObj.pathname.replace(/\/transform(?:\/.*)?$/, '/transform/videomanifest');
       // Ensure part=index&format=dash params are present
       urlObj.searchParams.set('part', 'index');
       urlObj.searchParams.set('format', 'dash');
@@ -138,13 +141,6 @@
   function tryPostManifest() {
     const manifestUrl = extractManifestFromFileInfo();
     if (!manifestUrl) return false;
-    // g_fileInfo carries the legacy tempauth-signed URL that the .svc.ms CDN
-    // now rejects (see TempAuthRemoval rollout). Skip it — the fetch hook will
-    // capture the fresh P1-P4 URL once the player loads.
-    if (/tempauth/i.test(manifestUrl)) {
-      console.debug('[Transcript Downloader] Skipping stale tempauth manifest from g_fileInfo; waiting for fresh URL');
-      return false;
-    }
     console.log('[Transcript Downloader] Extracted videomanifest from g_fileInfo:', manifestUrl);
     window.postMessage({
       type: 'VIDEO_MANIFEST_URL',
