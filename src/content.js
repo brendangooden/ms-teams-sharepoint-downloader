@@ -796,7 +796,7 @@
         const docidRaw = new URL(videoManifestUrl).searchParams.get('docid');
         if (docidRaw) {
           const docUrl = new URL(decodeURIComponent(docidRaw));
-          const m = docUrl.pathname.match(/^(\/(?:personal|sites)\/[^/]+)\/_api\/v[0-9.]+\/drives\/([^/]+)\/items\/([^/?]+)/);
+          const m = docUrl.pathname.match(/^(\/(?:personal|sites|teams)\/[^/]+)\/_api\/v[0-9.]+\/drives\/([^/]+)\/items\/([^/?]+)/);
           if (m) { sitePath = m[1]; driveId = m[2]; itemId = m[3]; }
         }
       } catch (_) { /* ignore */ }
@@ -814,7 +814,7 @@
 
     // 3. Fall back to current page path for sitePath if not yet known
     if (!sitePath) {
-      const m = window.location.pathname.match(/^\/(?:personal|sites)\/[^/]+/);
+      const m = window.location.pathname.match(/^\/(?:personal|sites|teams)\/[^/]+/);
       if (m) sitePath = m[0];
     }
 

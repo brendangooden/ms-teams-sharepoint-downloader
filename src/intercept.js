@@ -168,7 +168,7 @@
     if (!spItemUrl) return false;
     try {
       const u = new URL(spItemUrl);
-      const m = u.pathname.match(/^(\/(?:personal|sites)\/[^/]+)\/_api\/v[0-9.]+\/drives\/([^/]+)\/items\/([^/?]+)/);
+      const m = u.pathname.match(/^(\/(?:personal|sites|teams)\/[^/]+)\/_api\/v[0-9.]+\/drives\/([^/]+)\/items\/([^/?]+)/);
       if (!m) return false;
       // Best human name for the file, extension stripped. document.title is
       // unreliable in the Teams recap embed (it's the Teams shell title, not
