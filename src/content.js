@@ -28,25 +28,23 @@
   // Shape: { driveId, itemId, sitePath, hasTranscripts, fileName }.
   let gFileTranscriptContext = null;
 
-  // PROTOTYPE (issue #22) — new SharePoint Stream delivery.
-  // Microsoft moved video off the `videomanifest` request on the *.svc.ms CDN.
-  // Video now streams from a same-origin `oneDrive.transcode` endpoint, and the
-  // player fetches every segment from inside a Web Worker. Our main-world
-  // fetch hook (intercept.js) never sees those requests, so `videoManifestUrl`
-  // stays null and the button never activates.
+  // Newer SharePoint Stream delivery (issue #22). Microsoft moved video off the
+  // `videomanifest` request on the *.svc.ms CDN. Video now streams from a
+  // same-origin `oneDrive.transcode` endpoint, and the player fetches every
+  // segment from inside a Web Worker — so our main-world fetch hook
+  // (intercept.js) never sees those requests and `videoManifestUrl` stays null.
   //
-  // This object holds the transcode session we recover instead — NOT from a
-  // fetch hook, but by reading `performance.getEntriesByType('resource')`,
-  // which DOES list the worker's requests (with their full signed query). It is
-  // enough to light the button and to log the session template we need to
-  // rebuild the download path. It does NOT yet drive an actual download.
+  // We recover the session instead from `performance.getEntriesByType(
+  // 'resource')`, which DOES list the worker's requests (with their full signed
+  // query). That gives the init + a sample media segment URL per track plus the
+  // per-track timing template — enough to enumerate every segment.
   // Shape: see buildTranscodeSession().
   let transcodeSession = null;
 
-  // PROTOTYPE (#22) — AES-128-CBC decryption material for the new
-  // oneDrive.transcode format. The whole segment (init + media) is encrypted;
-  // the key + IV live in the page's `g_streamBootstrapContent.dashConfig
-  // .cdnDecryptionKey` and are relayed here by intercept.js (MAIN world).
+  // AES-128-CBC decryption material for the oneDrive.transcode format. The whole
+  // segment (init + media) is encrypted; the key + IV live in the page's
+  // `g_streamBootstrapContent.dashConfig.cdnDecryptionKey` and are relayed here
+  // by intercept.js (MAIN world).
   // Shape: { keyBytes: Uint8Array(16), iv: Uint8Array(16), keyId }.
   let transcodeDecryptKey = null;
 
@@ -120,8 +118,8 @@
       updateFloatingWidgetState();
     }
 
-    // PROTOTYPE (#22): AES key + IV for the new oneDrive.transcode format,
-    // relayed from g_streamBootstrapContent by intercept.js.
+    // AES key + IV for the oneDrive.transcode format, relayed from
+    // g_streamBootstrapContent by intercept.js (see issue #22).
     if (event.data.type === 'TRANSCODE_DECRYPTION_KEY') {
       const kb = event.data.keyBytes, iv = event.data.iv;
       if (Array.isArray(kb) && kb.length === 16 && Array.isArray(iv) && iv.length === 16) {
@@ -130,14 +128,14 @@
           iv: new Uint8Array(iv),
           keyId: event.data.keyId || null
         };
-        console.log('[Transcript Downloader] PROTOTYPE — captured transcode decryption key (AES-128-CBC).');
+        console.log('[Transcript Downloader] Captured transcode decryption key (AES-128-CBC)');
         updateFloatingWidgetState();
       }
     }
   });
 
   // ============================================================================
-  // PROTOTYPE (issue #22) — oneDrive.transcode session capture
+  // oneDrive.transcode session capture (issue #22)
   // ----------------------------------------------------------------------------
   // Recover the new video session from Resource Timing instead of a fetch hook.
   // The player fetches `oneDrive.transcode` segments from a Web Worker, so
@@ -155,7 +153,7 @@
   //
   // We keep the shared session params, plus one init + a sample media segment
   // per track, plus the per-track timing template (wsd = segment duration step,
-  // ppd ~ total, ppst = start). That is what a rebuilt download path will need.
+  // ppd ~ total, ppst = start) — enough to enumerate and fetch every segment.
   // ============================================================================
 
   const TRANSCODE_RE = /\/oneDrive\.transcode(?:\?|$)/i;
@@ -250,9 +248,9 @@
     };
   }
 
-  // Poll Resource Timing until we recover the session, then light the button
-  // and log the template. Also runs a PerformanceObserver so a session that
-  // only starts on playback is caught the moment its first segments fire.
+  // Poll Resource Timing until we recover the session, then light the button.
+  // Also runs a PerformanceObserver so a session whose segments arrive later
+  // (e.g. only once playback starts) is caught the moment they fire.
   function startTranscodeCapture() {
     if (window.__ttdTranscodeCaptureStarted) return;
     window.__ttdTranscodeCaptureStarted = true;
@@ -265,9 +263,7 @@
       const session = buildTranscodeSession(transcodeUrlsFromPerformance());
       if (session) {
         transcodeSession = session;
-        console.log('[Transcript Downloader] PROTOTYPE — captured oneDrive.transcode session (new format).');
-        console.log('[Transcript Downloader] Session template (for download rebuild):');
-        console.dir(session);
+        console.log('[Transcript Downloader] Captured oneDrive.transcode session');
         try { updateFloatingWidgetState(); } catch (_) { /* button may not be injected yet */ }
         return true;
       }
@@ -1625,8 +1621,8 @@
     }
   }
 
-  // PROTOTYPE (#22) — build the parseDashManifest-shaped track list for the new
-  // oneDrive.transcode format from the captured session + the page's AES key.
+  // Build the parseDashManifest-shaped track list for the oneDrive.transcode
+  // format from the captured session + the page's AES key (issue #22).
   // Every segment URL differs only in `segmentTime`, which steps by `wsd` from
   // `ppst` up to `ppd`; count = ceil((ppd - ppst) / wsd) (validated live: the
   // signed session covers every segmentTime, and one-past-the-end 500s).
@@ -1645,10 +1641,10 @@
         u.searchParams.set('segmentTime', String(ppst + i * wsd));
         segments.push(u.toString());
       }
-      const type = (name === 'video' || name === 'audio') ? name : name;
+      // `name` is the transcode `track` param — 'video' or 'audio'.
       tracks.push({
-        type,
-        mimeType: type === 'audio' ? 'audio/mp4' : 'video/mp4',
+        type: name,
+        mimeType: name === 'audio' ? 'audio/mp4' : 'video/mp4',
         initUrl: t.initUrl,
         segments,
         encryption: enc
@@ -1657,7 +1653,7 @@
     return tracks;
   }
 
-  // PROTOTYPE (#22) — download entry point for the new format.
+  // Download entry point for the oneDrive.transcode format (issue #22).
   async function triggerTranscodeVideoDownload(format, filename, onProgress, signal) {
     onProgress(0, 1, 'Preparing segments...');
     const allTracks = buildTranscodeTracks();
@@ -1930,8 +1926,8 @@
       const show = !legacyVideo && onVideoPage;
       vBtn.style.display = show ? '' : 'none';
       if (show) anyVisible = true;
-      // PROTOTYPE (#22): the new oneDrive.transcode session also counts as
-      // "ready" so the button lights up, even though download isn't rebuilt yet.
+      // The oneDrive.transcode session also counts as "ready" so the button
+      // lights up on the newer SharePoint delivery (issue #22).
       const videoReady = videoManifestUrl || transcodeSession;
       vBtn.setAttribute('data-state', videoReady ? 'ready' : 'waiting');
       vBtn.title = videoReady
@@ -2110,9 +2106,9 @@
 
     console.log('[Transcript Downloader] Video download button clicked');
 
-    // PROTOTYPE (#22): new oneDrive.transcode format. We can download it once
-    // both the session template AND the AES key have been captured. If the
-    // session is captured but the key isn't yet, ask the user to wait.
+    // oneDrive.transcode format (issue #22): downloadable once both the session
+    // template AND the AES key are captured. If the key isn't in yet, ask the
+    // user to wait.
     if (!videoManifestUrl && transcodeSession) {
       if (!transcodeDecryptKey) {
         // Re-request from intercept.js (MAIN world) in case its one-shot relay
@@ -2378,8 +2374,8 @@
 
     injectFloatingWidget();
 
-    // PROTOTYPE (#22): start recovering the new oneDrive.transcode session from
-    // Resource Timing (the fetch hook can't see the worker's requests).
+    // Recover the oneDrive.transcode session from Resource Timing — the fetch
+    // hook can't see the player's worker requests (issue #22).
     startTranscodeCapture();
 
     let transcriptDone = injectDownloadButton();

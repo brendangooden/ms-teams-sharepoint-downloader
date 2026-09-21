@@ -193,8 +193,8 @@
     }
   }
 
-  // PROTOTYPE (issue #22) — relay the AES-128-CBC decryption key + IV for the
-  // new oneDrive.transcode format. Microsoft encrypts the whole segment (init +
+  // Relay the AES-128-CBC decryption key + IV for the oneDrive.transcode
+  // format (issue #22). Microsoft encrypts the whole segment (init +
   // media) and puts the key/IV in `g_streamBootstrapContent.dashConfig
   // .cdnDecryptionKey` on the main thread. The content script (isolated world)
   // can't read that global, so relay it here. keyBuffer/iv are Uint8Arrays;
