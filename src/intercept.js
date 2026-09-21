@@ -265,6 +265,12 @@
     if (event.source !== window) return;
     if (event.data && event.data.type === 'TTD_REQUEST_CONTEXT') {
       transcriptContextPosted = false;
+      // Reset the guard so we re-post the key: intercept.js (MAIN, document_start)
+      // relays it once before content.js (document_idle) has attached its
+      // listener, so the first post is missed. content.js asks again via this
+      // message once it's ready. Without the reset, tryPostDecryptionKey()
+      // short-circuits on decryptionKeyPosted and the key never arrives.
+      decryptionKeyPosted = false;
       tryPostTranscriptContext();
       tryPostManifest();
       tryPostDecryptionKey();

@@ -2115,8 +2115,11 @@
     // session is captured but the key isn't yet, ask the user to wait.
     if (!videoManifestUrl && transcodeSession) {
       if (!transcodeDecryptKey) {
+        // Re-request from intercept.js (MAIN world) in case its one-shot relay
+        // landed before our listener attached — the reply repopulates the key.
+        requestTranscriptContext();
         alert('Almost ready — still reading the video key. Wait a moment, then click Download again.');
-        console.warn('[Transcript Downloader] Transcode session captured but decryption key not yet available');
+        console.warn('[Transcript Downloader] Transcode session captured but decryption key not yet available; re-requested from page');
         return;
       }
       showVideoModal();
