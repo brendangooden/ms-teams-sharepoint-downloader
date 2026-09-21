@@ -19,7 +19,7 @@ Works on:
 - `*.sharepoint.com` meeting-recording links
 - `*.sharepoint.com/.../_layouts/15/stream.aspx` — the Stream-on-SharePoint player (any MP4 someone uploaded to SharePoint or OneDrive and shared)
 
-> **About Microsoft Stream:** Microsoft retired the standalone *Stream (Classic)* product at `web.microsoftstream.com` in early 2024. The current *Stream (on SharePoint)* product reuses the same player whenever an MP4 lives on SharePoint or OneDrive, so this extension covers it automatically.
+> **About Microsoft Stream and Clipchamp:** Microsoft retired *Stream (Classic)* in 2024 and continues to migrate playback to *Stream on SharePoint* and *Clipchamp*. Newer interfaces sometimes bypass the classic player network calls. The extension extracts metadata directly from page variables to support these updated views.
 
 ## Features
 
@@ -112,6 +112,30 @@ src/
 ### Extension not working
 1. Reload it from `chrome://extensions/`.
 2. Clear cache and reload the SharePoint/Teams page.
+
+### "Video manifest URL not captured yet" (Clipchamp migration and view-only recordings)
+Microsoft is actively transitioning video playback from the classic Stream viewer to Clipchamp and updated SharePoint media components.
+
+This causes two issues:
+- **Clipchamp player isolation**: Modern players do not always trigger the passive `videomanifest` network call that the extension expects during playback.
+- **`tempauth` signatures on regional CDNs**: When recordings have "Can view, cannot download" permissions, media endpoints (such as `*-mediap.svc.ms`) serve manifests signed with `tempauth`. Older extension filters ignored these URLs.
+
+You can manually extract the manifest from page metadata and send it to the extension:
+1. Open DevTools (`F12`) and switch to the **Console** tab.
+2. Paste and run the following command:
+```javascript
+const g = window.g_fileInfo;
+const t = g['.transformUrl'] || g['.providerCdnTransformUrl'];
+const u = new URL(t);
+u.pathname = u.pathname.replace(/\/transform\/.*/, '/transform/videomanifest');
+u.searchParams.set('part', 'index');
+u.searchParams.set('format', 'dash');
+window.postMessage({ type: 'VIDEO_MANIFEST_URL', manifestUrl: u.href }, '*');
+```
+3. Confirm that `[Transcript Downloader] Received video manifest URL` appears in the console.
+4. Click the red **Download Video** button again to start the download.
+
+
 
 ## Privacy & security
 
