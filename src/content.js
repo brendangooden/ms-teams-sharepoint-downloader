@@ -28,6 +28,21 @@
   // Shape: { driveId, itemId, sitePath, hasTranscripts, fileName }.
   let gFileTranscriptContext = null;
 
+  // PROTOTYPE (issue #22) — new SharePoint Stream delivery.
+  // Microsoft moved video off the `videomanifest` request on the *.svc.ms CDN.
+  // Video now streams from a same-origin `oneDrive.transcode` endpoint, and the
+  // player fetches every segment from inside a Web Worker. Our main-world
+  // fetch hook (intercept.js) never sees those requests, so `videoManifestUrl`
+  // stays null and the button never activates.
+  //
+  // This object holds the transcode session we recover instead — NOT from a
+  // fetch hook, but by reading `performance.getEntriesByType('resource')`,
+  // which DOES list the worker's requests (with their full signed query). It is
+  // enough to light the button and to log the session template we need to
+  // rebuild the download path. It does NOT yet drive an actual download.
+  // Shape: see buildTranscodeSession().
+  let transcodeSession = null;
+
   // Global segment-fetch budget — total in flight across all tracks. SharePoint
   // throttles around the low-teens for many tenants, so default 4 keeps us
   // well under their limit; users can dial up to 16 for lax tenants or down
@@ -98,6 +113,155 @@
       updateFloatingWidgetState();
     }
   });
+
+  // ============================================================================
+  // PROTOTYPE (issue #22) — oneDrive.transcode session capture
+  // ----------------------------------------------------------------------------
+  // Recover the new video session from Resource Timing instead of a fetch hook.
+  // The player fetches `oneDrive.transcode` segments from a Web Worker, so
+  // `window.fetch` never sees them — but `performance.getEntriesByType(
+  // 'resource')` lists them, query string included, from the isolated world too.
+  //
+  // A transcode URL looks like:
+  //   https://<host>/_api_cached/v2.1/drives/<driveId>/items/<itemId>/oneDrive.transcode
+  //     ?version=Published&P1=..&P2=..&P3=..&P4=..            (signed session)
+  //     &cTag=..&format=fmp4&InputFormat=mp4&PlaybackSessionData=..
+  //     &enableEncryption=1&kid=..                            (AES-128-CBC / DASH-SEA)
+  //     &part=initsegment|mediasegment|index|key
+  //     &track=video|audio&quality=vcopy|audcopy
+  //     &segmentTime=..&wsd=..&ppd=..&ppst=..&headerOffset=..&headerSize=..
+  //
+  // We keep the shared session params, plus one init + a sample media segment
+  // per track, plus the per-track timing template (wsd = segment duration step,
+  // ppd ~ total, ppst = start). That is what a rebuilt download path will need.
+  // ============================================================================
+
+  const TRANSCODE_RE = /\/oneDrive\.transcode(?:\?|$)/i;
+  // Query params that identify the signed session (shared across every part).
+  const SESSION_PARAM_KEYS = ['version', 'P1', 'P2', 'P3', 'P4', 'VroomTakeover',
+    'cTag', 'format', 'InputFormat', 'correlationid', 'psi', 'pn', 'ccat',
+    'PlaybackSessionData', 'altTranscode', 'enableEncryption', 'kid', 'enableCdn'];
+
+  function transcodeUrlsFromPerformance() {
+    try {
+      return performance.getEntriesByType('resource')
+        .map(e => e.name)
+        .filter(u => typeof u === 'string' && TRANSCODE_RE.test(u));
+    } catch (_) {
+      return [];
+    }
+  }
+
+  // Build the structured session object from the transcode URLs seen so far.
+  // Returns null until at least the video track's init + one media segment and
+  // the shared session params are present.
+  function buildTranscodeSession(urls) {
+    if (!urls.length) return null;
+
+    let base = null, driveId = null, itemId = null;
+    const sessionParams = {};
+    const tracks = {}; // key -> { quality, wsd, ppd, ppst, headerOffset, headerSize, msvb, initUrl, sampleSegmentUrl, segmentTimes:Set }
+    let encryption = { enabled: false, kid: null };
+    let keyUrl = null;
+
+    for (const u of urls) {
+      let url;
+      try { url = new URL(u); } catch (_) { continue; }
+      const q = url.searchParams;
+      const part = q.get('part');
+
+      if (!base) {
+        base = url.origin + url.pathname;
+        const m = url.pathname.match(/\/drives\/([^/]+)\/items\/([^/]+)\//);
+        if (m) { driveId = m[1]; itemId = m[2]; }
+        for (const k of SESSION_PARAM_KEYS) { const v = q.get(k); if (v !== null) sessionParams[k] = v; }
+        if (q.get('enableEncryption') === '1') encryption = { enabled: true, kid: q.get('kid') };
+      }
+
+      if (part === 'key') { keyUrl = keyUrl || u; continue; }
+
+      const trackKey = q.get('track') || 'video';
+      const t = tracks[trackKey] || (tracks[trackKey] = {
+        quality: q.get('quality'), wsd: q.get('wsd'), ppd: q.get('ppd'), ppst: q.get('ppst'),
+        headerOffset: q.get('headerOffset'), headerSize: q.get('headerSize'), msvb: q.get('msvb'),
+        initUrl: null, sampleSegmentUrl: null, segmentTimes: new Set()
+      });
+      // Fill template fields from whichever part carries them (segments do).
+      if (t.wsd == null && q.get('wsd') != null) t.wsd = q.get('wsd');
+      if (t.ppd == null && q.get('ppd') != null) t.ppd = q.get('ppd');
+      if (t.ppst == null && q.get('ppst') != null) t.ppst = q.get('ppst');
+      if (t.headerOffset == null && q.get('headerOffset') != null) t.headerOffset = q.get('headerOffset');
+      if (t.headerSize == null && q.get('headerSize') != null) t.headerSize = q.get('headerSize');
+      if (part === 'initsegment') t.initUrl = t.initUrl || u;
+      if (part === 'mediasegment') {
+        t.sampleSegmentUrl = t.sampleSegmentUrl || u;
+        const st = q.get('segmentTime');
+        if (st != null) t.segmentTimes.add(Number(st));
+      }
+    }
+
+    // Need at least a video track that has an init + one media segment.
+    const v = tracks.video;
+    if (!base || !v || !v.initUrl || !v.sampleSegmentUrl) return null;
+
+    let durationSec = null;
+    try {
+      const vid = document.querySelector('video');
+      if (vid && isFinite(vid.duration) && vid.duration > 0) durationSec = vid.duration;
+    } catch (_) { /* ignore */ }
+
+    // Convert segmentTime Sets to sorted arrays and add a count for logging.
+    const outTracks = {};
+    for (const [k, t] of Object.entries(tracks)) {
+      const times = [...t.segmentTimes].sort((a, b) => a - b);
+      outTracks[k] = {
+        quality: t.quality, wsd: t.wsd, ppd: t.ppd, ppst: t.ppst,
+        headerOffset: t.headerOffset, headerSize: t.headerSize, msvb: t.msvb,
+        initUrl: t.initUrl, sampleSegmentUrl: t.sampleSegmentUrl,
+        segmentTimesSeen: times.length, firstSegmentTimes: times.slice(0, 5)
+      };
+    }
+
+    return {
+      base, driveId, itemId, sessionParams, encryption,
+      keyUrl, tracks: outTracks, durationSec, capturedAt: new Date().toISOString()
+    };
+  }
+
+  // Poll Resource Timing until we recover the session, then light the button
+  // and log the template. Also runs a PerformanceObserver so a session that
+  // only starts on playback is caught the moment its first segments fire.
+  function startTranscodeCapture() {
+    if (window.__ttdTranscodeCaptureStarted) return;
+    window.__ttdTranscodeCaptureStarted = true;
+
+    let tries = 0;
+    const MAX_TRIES = 40; // ~60s at 1.5s
+    const tick = () => {
+      if (transcodeSession) return true;
+      if (!isLikelyVideoPage()) return false;
+      const session = buildTranscodeSession(transcodeUrlsFromPerformance());
+      if (session) {
+        transcodeSession = session;
+        console.log('[Transcript Downloader] PROTOTYPE — captured oneDrive.transcode session (new format).');
+        console.log('[Transcript Downloader] Session template (for download rebuild):');
+        console.dir(session);
+        try { updateFloatingWidgetState(); } catch (_) { /* button may not be injected yet */ }
+        return true;
+      }
+      return false;
+    };
+
+    if (tick()) return;
+    const iv = setInterval(() => {
+      if (tick() || ++tries >= MAX_TRIES) clearInterval(iv);
+    }, 1500);
+
+    try {
+      const obs = new PerformanceObserver(() => { if (tick()) obs.disconnect(); });
+      obs.observe({ type: 'resource', buffered: true });
+    } catch (_) { /* PerformanceObserver unsupported — interval still covers it */ }
+  }
 
   // ============================================================================
   // Format Conversion Functions
@@ -1678,8 +1842,11 @@
       const show = !legacyVideo && onVideoPage;
       vBtn.style.display = show ? '' : 'none';
       if (show) anyVisible = true;
-      vBtn.setAttribute('data-state', videoManifestUrl ? 'ready' : 'waiting');
-      vBtn.title = videoManifestUrl
+      // PROTOTYPE (#22): the new oneDrive.transcode session also counts as
+      // "ready" so the button lights up, even though download isn't rebuilt yet.
+      const videoReady = videoManifestUrl || transcodeSession;
+      vBtn.setAttribute('data-state', videoReady ? 'ready' : 'waiting');
+      vBtn.title = videoReady
         ? 'Download video'
         : 'Video manifest URL not yet captured — start playback or wait a moment';
     }
@@ -1854,6 +2021,16 @@
     event.stopPropagation();
 
     console.log('[Transcript Downloader] Video download button clicked');
+
+    // PROTOTYPE (#22): new format captured but the download path isn't rebuilt.
+    // Surface the captured session (the useful artifact) instead of the old
+    // modal, which depends on a fetchable videomanifest that no longer exists.
+    if (!videoManifestUrl && transcodeSession) {
+      console.log('[Transcript Downloader] PROTOTYPE — new oneDrive.transcode format detected. Captured session:');
+      console.dir(transcodeSession);
+      alert('This recording uses SharePoint’s new video format. Capture works, but the download rebuild for it is still in progress (see issue #22). The captured session has been logged to the console.');
+      return;
+    }
 
     if (!videoManifestUrl) {
       alert('Video manifest URL not captured yet. Please wait a moment and try again, or refresh the page.');
@@ -2106,6 +2283,10 @@
     }
 
     injectFloatingWidget();
+
+    // PROTOTYPE (#22): start recovering the new oneDrive.transcode session from
+    // Resource Timing (the fetch hook can't see the worker's requests).
+    startTranscodeCapture();
 
     let transcriptDone = injectDownloadButton();
     let videoDone = injectVideoDownloadButton();
