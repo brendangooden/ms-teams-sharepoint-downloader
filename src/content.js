@@ -1662,7 +1662,7 @@
     onProgress(0, 1, 'Preparing segments...');
     const allTracks = buildTranscodeTracks();
     if (!allTracks.length) {
-      throw new Error('Could not build the video from the captured session. Start playback, wait a moment, then try again.');
+      throw new Error('Could not read the video session yet. Wait a few seconds after the page loads, then try again.');
     }
     await finishVideoDownload(allTracks, format, filename, onProgress, signal);
   }
@@ -2115,7 +2115,7 @@
     // session is captured but the key isn't yet, ask the user to wait.
     if (!videoManifestUrl && transcodeSession) {
       if (!transcodeDecryptKey) {
-        alert('Almost ready — still capturing the video key. Start playback if you haven’t, wait a moment, then click Download again.');
+        alert('Almost ready — still reading the video key. Wait a moment, then click Download again.');
         console.warn('[Transcript Downloader] Transcode session captured but decryption key not yet available');
         return;
       }
