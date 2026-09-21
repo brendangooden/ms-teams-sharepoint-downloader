@@ -11,6 +11,9 @@
   let vttData = null; // Will store converted VTT
   let selectedFormat = 'vtt'; // Default format (json, vtt, or vtt-grouped)
   let videoManifestUrl = null;
+  // Same-origin oneDrive.transcode segment URL captured from the player's
+  // Web Worker (Stream no longer always issues a videomanifest request).
+  let videoTranscodeUrl = null;
   // Bearer token captured from the player's own videomanifest fetch. Microsoft's
   // .svc.ms CDN now requires this `x-spopactoken` header in addition to the
   // P1-P4 query-string signature, otherwise the request returns HTTP 401 with
@@ -54,9 +57,82 @@
     return init;
   }
 
+  function isSharePointOrigin(url) {
+    try {
+      return /sharepoint(-df)?\.com$/i.test(new URL(url).hostname);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // Same-origin transcode/index lives on sharepoint.com (cookies). Cross-origin
+  // *.svc.ms still needs the captured MediaTA token when we have one.
+  function dashFetchInit(url, extra) {
+    const init = Object.assign({}, extra || {});
+    if (isSharePointOrigin(url)) {
+      init.credentials = init.credentials || 'include';
+      if (spApiBearer) {
+        init.headers = Object.assign({}, init.headers || {}, { Authorization: spApiBearer });
+      }
+      return init;
+    }
+    return svcMsFetchInit(init);
+  }
+
+  function isVideoSourceReady() {
+    return !!(videoManifestUrl || videoTranscodeUrl);
+  }
+
+  function applyVideoManifest(incoming, spopactoken) {
+    if (!incoming || typeof incoming !== 'string') return false;
+    videoManifestUrl = incoming;
+    if (spopactoken) videoSpopActoken = spopactoken;
+    console.log('[Transcript Downloader] Received video manifest URL:', videoManifestUrl,
+      spopactoken ? '(with x-spopactoken)' : '(no token)');
+    updateFloatingWidgetState();
+    return true;
+  }
+
+  function applyVideoTranscode(incoming, spopactoken) {
+    if (!incoming || typeof incoming !== 'string') return false;
+    videoTranscodeUrl = incoming;
+    if (spopactoken) videoSpopActoken = spopactoken;
+    console.log('[Transcript Downloader] Received oneDrive.transcode URL');
+    updateFloatingWidgetState();
+    return true;
+  }
+
+  function syncVideoSourceFromDom() {
+    try {
+      const root = document.documentElement;
+      const manifest = root.getAttribute('data-ttd-video-manifest');
+      const transcode = root.getAttribute('data-ttd-video-transcode');
+      const token = root.getAttribute('data-ttd-spop-token');
+      let changed = false;
+      if (manifest && manifest !== videoManifestUrl) changed = applyVideoManifest(manifest, token) || changed;
+      else if (token && !videoSpopActoken) videoSpopActoken = token;
+      if (transcode && transcode !== videoTranscodeUrl) changed = applyVideoTranscode(transcode, token) || changed;
+      return changed || isVideoSourceReady();
+    } catch (_) {
+      return isVideoSourceReady();
+    }
+  }
+
+  function requestPlaybackAuth() {
+    try { window.postMessage({ type: 'TTD_REQUEST_PLAYBACK_AUTH' }, '*'); } catch (_) { /* ignore */ }
+  }
+
+  const TTD_RELAY_TYPES = new Set([
+    'TRANSCRIPT_METADATA', 'TRANSCRIPT_CONTEXT', 'SP_API_BEARER',
+    'SPOP_ACTOKEN', 'VIDEO_MANIFEST_URL', 'VIDEO_TRANSCODE_URL'
+  ]);
+
   // Listen for messages from the intercept.js script running in MAIN world
   window.addEventListener('message', (event) => {
-    if (event.source !== window) return;
+    if (!event.data || typeof event.data !== 'object') return;
+    const fromSelf = event.source === window;
+    const fromPlayerFrame = !fromSelf && event.data.type && TTD_RELAY_TYPES.has(event.data.type);
+    if (!fromSelf && !fromPlayerFrame) return;
 
     if (event.data.type === 'TRANSCRIPT_METADATA') {
       console.log('[Transcript Downloader] Received transcript metadata:', event.data);
@@ -89,13 +165,11 @@
     }
 
     if (event.data.type === 'VIDEO_MANIFEST_URL') {
-      console.log('[Transcript Downloader] Received video manifest URL:', event.data.manifestUrl,
-        event.data.spopactoken ? '(with x-spopactoken)' : '(no token)');
-      videoManifestUrl = event.data.manifestUrl;
-      // Only overwrite the captured token if the new message has one — never
-      // downgrade from "token present" to "token missing".
-      if (event.data.spopactoken) videoSpopActoken = event.data.spopactoken;
-      updateFloatingWidgetState();
+      applyVideoManifest(event.data.manifestUrl, event.data.spopactoken || null);
+    }
+
+    if (event.data.type === 'VIDEO_TRANSCODE_URL') {
+      applyVideoTranscode(event.data.transcodeUrl, event.data.spopactoken || null);
     }
   });
 
@@ -614,9 +688,17 @@
         const docidRaw = new URL(videoManifestUrl).searchParams.get('docid');
         if (docidRaw) {
           const docUrl = new URL(decodeURIComponent(docidRaw));
-          const m = docUrl.pathname.match(/^(\/(?:personal|sites)\/[^/]+)\/_api\/v[0-9.]+\/drives\/([^/]+)\/items\/([^/?]+)/);
+          const m = docUrl.pathname.match(/^(\/(?:personal|sites|teams)\/[^/]+)\/_api\/v[0-9.]+\/drives\/([^/]+)\/items\/([^/?]+)/);
           if (m) { sitePath = m[1]; driveId = m[2]; itemId = m[3]; }
         }
+      } catch (_) { /* ignore */ }
+    }
+
+    // 1b. oneDrive.transcode path is /_api_cached/v2.1/drives/{id}/items/{id}/...
+    if ((!driveId || !itemId) && videoTranscodeUrl) {
+      try {
+        const m = new URL(videoTranscodeUrl).pathname.match(/\/drives\/([^/]+)\/items\/([^/]+)/);
+        if (m) { driveId = driveId || m[1]; itemId = itemId || m[2]; }
       } catch (_) { /* ignore */ }
     }
 
@@ -632,7 +714,7 @@
 
     // 3. Fall back to current page path for sitePath if not yet known
     if (!sitePath) {
-      const m = window.location.pathname.match(/^\/(?:personal|sites)\/[^/]+/);
+      const m = window.location.pathname.match(/^\/(?:personal|sites|teams)\/[^/]+/);
       if (m) sitePath = m[0];
     }
 
@@ -646,6 +728,121 @@
   // content.js even loaded). Fix: let content.js ask the MAIN world to re-post.
   function requestTranscriptContext() {
     try { window.postMessage({ type: 'TTD_REQUEST_CONTEXT' }, '*'); } catch (_) { /* ignore */ }
+  }
+
+  function waitForVideoSource(timeoutMs) {
+    return new Promise((resolve) => {
+      syncVideoSourceFromDom();
+      if (isVideoSourceReady()) { resolve(true); return; }
+      requestTranscriptContext();
+      requestPlaybackAuth();
+      const start = Date.now();
+      const iv = setInterval(() => {
+        syncVideoSourceFromDom();
+        if (isVideoSourceReady() || Date.now() - start > timeoutMs) {
+          clearInterval(iv);
+          resolve(isVideoSourceReady());
+        }
+      }, 100);
+    });
+  }
+
+  // Turn a captured mediasegment transcode URL into the DASH index the old
+  // videomanifest path used. Keep P1-P4 / cTag / PlaybackSessionData — those
+  // are how TempAuthRemoval tenants authorize the same-origin CDN.
+  function transcodeUrlToIndex(rawUrl) {
+    try {
+      const u = new URL(rawUrl);
+      u.searchParams.set('part', 'index');
+      const fmt = (u.searchParams.get('format') || '').toLowerCase();
+      if (!fmt || fmt === 'fmp4') u.searchParams.set('format', 'dash');
+      ['track', 'quality', 'segmentTime', 'headerOffset', 'headerSize',
+        'wsd', 'ppd', 'ppst', 'msvb', 'altTranscode'].forEach((k) => u.searchParams.delete(k));
+      return u.toString();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function looksLikeDashMpd(text) {
+    return typeof text === 'string' && /<MPD[\s>]|<AdaptationSet[\s>]/i.test(text);
+  }
+
+  function copyCdnSigParams(fromUrl, ontoUrl) {
+    if (!fromUrl || !ontoUrl) return ontoUrl;
+    try {
+      const src = new URL(fromUrl);
+      const dst = new URL(ontoUrl);
+      ['p1', 'p2', 'p3', 'p4', 'P1', 'P2', 'P3', 'P4', 'cTag', 'PlaybackSessionData',
+        'correlationid', 'psi', 'enableCdn', 'enableEncryption', 'kid', 'InputFormat',
+        'inputFormat'].forEach((k) => {
+        const v = src.searchParams.get(k);
+        if (v && !dst.searchParams.get(k)) dst.searchParams.set(k, v);
+      });
+      return dst.toString();
+    } catch (_) {
+      return ontoUrl;
+    }
+  }
+
+  async function tryFetchDashXml(url, signal) {
+    const resp = await fetch(url, dashFetchInit(url, { signal, redirect: 'follow' }));
+    if (!resp.ok) return null;
+    const text = await resp.text();
+    if (!looksLikeDashMpd(text)) return null;
+    return { url: resp.url || url, xmlText: text };
+  }
+
+  // Resolve a readable DASH MPD. Stream dropped page-world videomanifest
+  // fetches; the index is either a worker-captured transcode URL rewritten to
+  // part=index, a g_fileInfo-constructed transcode index, or Graph
+  // /content?format=dash (cookies on this origin).
+  async function resolveDashManifest(signal, onProgress) {
+    syncVideoSourceFromDom();
+    const tried = [];
+
+    async function attempt(url, label) {
+      if (!url || tried.includes(url)) return null;
+      tried.push(url);
+      if (onProgress) onProgress(0, 1, label);
+      try {
+        return await tryFetchDashXml(url, signal);
+      } catch (_) {
+        return null;
+      }
+    }
+
+    if (videoManifestUrl) {
+      const hit = await attempt(videoManifestUrl, 'Fetching manifest...');
+      if (hit) { videoManifestUrl = hit.url; return hit; }
+    }
+
+    if (videoTranscodeUrl) {
+      const index = transcodeUrlToIndex(videoTranscodeUrl);
+      const hit = await attempt(index, 'Fetching transcode index...');
+      if (hit) { videoManifestUrl = hit.url; return hit; }
+    }
+
+    const ctx = deriveTranscriptContext();
+    const origin = window.location.origin;
+    const site = ctx.sitePath || '';
+    if (ctx.driveId && ctx.itemId) {
+      const constructed = [
+        `${origin}${site}/_api/v2.1/drives/${ctx.driveId}/items/${ctx.itemId}/content?format=dash`,
+        `${origin}/_api/v2.1/drives/${ctx.driveId}/items/${ctx.itemId}/content?format=dash`,
+        `${origin}/_api_cached/v2.1/drives/${ctx.driveId}/items/${ctx.itemId}/oneDrive.transcode?version=Published&part=index&format=dash`,
+        `${origin}${site}/_api/v2.1/drives/${ctx.driveId}/items/${ctx.itemId}/oneDrive.transcode?version=Published&part=index&format=dash`
+      ].map((u) => copyCdnSigParams(videoTranscodeUrl || videoManifestUrl, u));
+
+      for (const url of constructed) {
+        const hit = await attempt(url, 'Requesting stream index from SharePoint...');
+        if (hit) { videoManifestUrl = hit.url; return hit; }
+      }
+    }
+
+    throw new Error(
+      'Could not fetch a DASH index. Play the video for a few seconds so the player authorizes the stream, then retry.'
+    );
   }
 
   // Resolve once we have a usable drive/item identity, or after `timeoutMs`.
@@ -1135,9 +1332,7 @@
       let cryptoKey = null;
       if (track.encryption) {
         reportProgress(`Fetching encryption key${label}...`);
-        const init = track.encryption.keyUri.includes('svc.ms') && videoSpopActoken
-          ? { signal, headers: { 'x-spopactoken': videoSpopActoken } }
-          : { signal };
+        const init = dashFetchInit(track.encryption.keyUri, { signal });
         const keyResp = await fetchWithRetry(track.encryption.keyUri, init, signal, noteThrottle);
         if (!keyResp.ok) throw new Error(segmentFailureMessage('Encryption key fetch', keyResp.status));
         const keyBuf = await keyResp.arrayBuffer();
@@ -1156,7 +1351,7 @@
       let segStart = 0;
       if (track.initUrl) {
         reportProgress(`Fetching init segment${label}...`);
-        const r = await fetchWithRetry(track.initUrl, { signal }, signal, noteThrottle);
+        const r = await fetchWithRetry(track.initUrl, dashFetchInit(track.initUrl, { signal }), signal, noteThrottle);
         if (!r.ok) throw new Error(segmentFailureMessage('Init segment', r.status, track.initUrl));
         orderedBufs[0] = await decryptIfNeeded(await r.arrayBuffer());
         done++;
@@ -1188,7 +1383,7 @@
           }
           const job = queue[qIdx++];
           inFlight++;
-          fetchWithRetry(job.st.track.segments[job.si], { signal }, signal, noteThrottle)
+          fetchWithRetry(job.st.track.segments[job.si], dashFetchInit(job.st.track.segments[job.si], { signal }), signal, noteThrottle)
             .then(r => {
               if (!r.ok) throw new Error(segmentFailureMessage('Segment', r.status, job.st.track.segments[job.si]));
               return r.arrayBuffer();
@@ -1360,9 +1555,9 @@
 
   async function triggerBrowserVideoDownload(format, filename, onProgress, signal) {
     onProgress(0, 1, 'Fetching manifest...');
-    const resp = await fetch(videoManifestUrl, svcMsFetchInit({ signal }));
-    if (!resp.ok) throw new Error(`Manifest fetch failed: HTTP ${resp.status}`);
-    const xmlText = await resp.text();
+    const resolved = await resolveDashManifest(signal, onProgress);
+    const xmlText = resolved.xmlText;
+    videoManifestUrl = resolved.url;
 
     onProgress(0, 1, 'Parsing manifest...');
     const allTracks = parseDashManifest(xmlText, videoManifestUrl);
@@ -1678,10 +1873,10 @@
       const show = !legacyVideo && onVideoPage;
       vBtn.style.display = show ? '' : 'none';
       if (show) anyVisible = true;
-      vBtn.setAttribute('data-state', videoManifestUrl ? 'ready' : 'waiting');
-      vBtn.title = videoManifestUrl
+      vBtn.setAttribute('data-state', isVideoSourceReady() ? 'ready' : 'waiting');
+      vBtn.title = isVideoSourceReady()
         ? 'Download video'
-        : 'Video manifest URL not yet captured — start playback or wait a moment';
+        : 'Play the video for a few seconds, then try download';
     }
 
     // Hide the wrapper entirely when no button is visible so it doesn't appear
@@ -1849,16 +2044,22 @@
     return true;
   }
 
-  function handleVideoDownloadClick(event) {
+  async function handleVideoDownloadClick(event) {
     event.preventDefault();
     event.stopPropagation();
 
     console.log('[Transcript Downloader] Video download button clicked');
 
-    if (!videoManifestUrl) {
-      alert('Video manifest URL not captured yet. Please wait a moment and try again, or refresh the page.');
-      console.error('[Transcript Downloader] No video manifest URL available');
-      return;
+    if (!isVideoSourceReady()) {
+      await waitForVideoSource(4000);
+    }
+    if (!isVideoSourceReady()) {
+      const ctx = deriveTranscriptContext();
+      if (!(ctx && ctx.driveId && ctx.itemId)) {
+        alert('Video stream URL not captured yet. Start playback for a few seconds, then try again. If the button stays disabled, refresh the page.');
+        console.error('[Transcript Downloader] No video manifest or transcode URL available');
+        return;
+      }
     }
 
     showVideoModal();
@@ -2088,7 +2289,10 @@
     // Pull the g_fileInfo-derived context from the MAIN world now, in case its
     // one-shot post landed before our message listener existed (load-order
     // race). The intercept re-posts on this request.
+    syncVideoSourceFromDom();
     requestTranscriptContext();
+    setTimeout(syncVideoSourceFromDom, 50);
+    setTimeout(syncVideoSourceFromDom, 500);
 
     // Pull saved per-track concurrency and filename suffix overrides from sync storage
     // Fall back to the module defaults if absent or unusable

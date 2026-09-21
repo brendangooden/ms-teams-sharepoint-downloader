@@ -12,6 +12,7 @@
   "host_permissions": [
     "https://*.sharepoint.com/*",
     "https://*.sharepoint.com.mcas.ms/*",
+    "https://*.svc.ms/*",
     "https://teams.microsoft.com/*",
     "https://teams.cloud.microsoft/*",
     "https://teams.microsoft.com.mcas.ms/*"
