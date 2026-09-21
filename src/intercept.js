@@ -193,10 +193,54 @@
     }
   }
 
+  // PROTOTYPE (issue #22) — relay the AES-128-CBC decryption key + IV for the
+  // new oneDrive.transcode format. Microsoft encrypts the whole segment (init +
+  // media) and puts the key/IV in `g_streamBootstrapContent.dashConfig
+  // .cdnDecryptionKey` on the main thread. The content script (isolated world)
+  // can't read that global, so relay it here. keyBuffer/iv are Uint8Arrays;
+  // send plain arrays so the message survives structured cloning cleanly.
+  let decryptionKeyPosted = false;
+  function tryPostDecryptionKey() {
+    if (decryptionKeyPosted) return true;
+    try {
+      const dc = window.g_streamBootstrapContent && window.g_streamBootstrapContent.dashConfig;
+      const ck = dc && dc.cdnDecryptionKey;
+      if (!ck || ck.valid === false) return false;
+      const kb = ck.keyBuffer, iv = ck.iv;
+      if (!(kb && kb.length === 16 && iv && iv.length === 16)) return false;
+      window.postMessage({
+        type: 'TRANSCODE_DECRYPTION_KEY',
+        keyBytes: Array.from(kb),
+        iv: Array.from(iv),
+        keyId: ck.keyId || null
+      }, '*');
+      decryptionKeyPosted = true;
+      console.log('[Transcript Downloader] Relayed transcode decryption key from g_streamBootstrapContent');
+      return true;
+    } catch (e) {
+      console.debug('[Transcript Downloader] Error reading cdnDecryptionKey:', e);
+      return false;
+    }
+  }
+
   function tryPostAll() {
-    // `&` not `&&` — always attempt both; only report done when both succeed.
+    // `&` not `&&` — always attempt all; only report done when the two
+    // load-time posts succeed. The decryption key populates only once playback
+    // bootstraps, so it has its own poll below and doesn't gate "done" here.
+    tryPostDecryptionKey();
     return tryPostManifest() & tryPostTranscriptContext() ? true : false;
   }
+
+  // The decryption key isn't present at page load — it appears once the player
+  // bootstraps playback. Poll for it independently of the manifest/context
+  // race, then stop once relayed (or after ~60s).
+  (function pollDecryptionKey() {
+    if (tryPostDecryptionKey()) return;
+    let tries = 0;
+    const iv = setInterval(() => {
+      if (tryPostDecryptionKey() || ++tries >= 60) clearInterval(iv);
+    }, 1000);
+  })();
 
   // Try immediately
   if (!tryPostAll()) {
@@ -223,6 +267,7 @@
       transcriptContextPosted = false;
       tryPostTranscriptContext();
       tryPostManifest();
+      tryPostDecryptionKey();
     }
   });
 })();

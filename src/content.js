@@ -43,6 +43,13 @@
   // Shape: see buildTranscodeSession().
   let transcodeSession = null;
 
+  // PROTOTYPE (#22) — AES-128-CBC decryption material for the new
+  // oneDrive.transcode format. The whole segment (init + media) is encrypted;
+  // the key + IV live in the page's `g_streamBootstrapContent.dashConfig
+  // .cdnDecryptionKey` and are relayed here by intercept.js (MAIN world).
+  // Shape: { keyBytes: Uint8Array(16), iv: Uint8Array(16), keyId }.
+  let transcodeDecryptKey = null;
+
   // Global segment-fetch budget — total in flight across all tracks. SharePoint
   // throttles around the low-teens for many tenants, so default 4 keeps us
   // well under their limit; users can dial up to 16 for lax tenants or down
@@ -111,6 +118,21 @@
       // downgrade from "token present" to "token missing".
       if (event.data.spopactoken) videoSpopActoken = event.data.spopactoken;
       updateFloatingWidgetState();
+    }
+
+    // PROTOTYPE (#22): AES key + IV for the new oneDrive.transcode format,
+    // relayed from g_streamBootstrapContent by intercept.js.
+    if (event.data.type === 'TRANSCODE_DECRYPTION_KEY') {
+      const kb = event.data.keyBytes, iv = event.data.iv;
+      if (Array.isArray(kb) && kb.length === 16 && Array.isArray(iv) && iv.length === 16) {
+        transcodeDecryptKey = {
+          keyBytes: new Uint8Array(kb),
+          iv: new Uint8Array(iv),
+          keyId: event.data.keyId || null
+        };
+        console.log('[Transcript Downloader] PROTOTYPE — captured transcode decryption key (AES-128-CBC).');
+        updateFloatingWidgetState();
+      }
     }
   });
 
@@ -1298,14 +1320,21 @@
       // manifest's <BaseURL>) and are same-origin, no extra auth needed.
       let cryptoKey = null;
       if (track.encryption) {
-        reportProgress(`Fetching encryption key${label}...`);
-        const init = track.encryption.keyUri.includes('svc.ms') && videoSpopActoken
-          ? { signal, headers: { 'x-spopactoken': videoSpopActoken } }
-          : { signal };
-        const keyResp = await fetchWithRetry(track.encryption.keyUri, init, signal, noteThrottle);
-        if (!keyResp.ok) throw new Error(segmentFailureMessage('Encryption key fetch', keyResp.status));
-        const keyBuf = await keyResp.arrayBuffer();
-        cryptoKey = await crypto.subtle.importKey('raw', keyBuf, { name: 'AES-CBC' }, false, ['decrypt']);
+        if (track.encryption.keyBytes) {
+          // New oneDrive.transcode path: the AES key is already in hand (read
+          // from the page's g_streamBootstrapContent, not fetched over the
+          // network), so import it directly — no key request needed.
+          cryptoKey = await crypto.subtle.importKey('raw', track.encryption.keyBytes, { name: 'AES-CBC' }, false, ['decrypt']);
+        } else {
+          reportProgress(`Fetching encryption key${label}...`);
+          const init = track.encryption.keyUri.includes('svc.ms') && videoSpopActoken
+            ? { signal, headers: { 'x-spopactoken': videoSpopActoken } }
+            : { signal };
+          const keyResp = await fetchWithRetry(track.encryption.keyUri, init, signal, noteThrottle);
+          if (!keyResp.ok) throw new Error(segmentFailureMessage('Encryption key fetch', keyResp.status));
+          const keyBuf = await keyResp.arrayBuffer();
+          cryptoKey = await crypto.subtle.importKey('raw', keyBuf, { name: 'AES-CBC' }, false, ['decrypt']);
+        }
       }
 
       async function decryptIfNeeded(buf) {
@@ -1554,6 +1583,14 @@
       throw err;
     }
 
+    await finishVideoDownload(allTracks, format, filename, onProgress, signal);
+  }
+
+  // Pick the requested track(s) from a parsed track list, download + decrypt
+  // their segments, and mux/save. Shared by the legacy videomanifest path and
+  // the new oneDrive.transcode path — both produce the same `allTracks` shape
+  // ({ type, mimeType, initUrl, segments, encryption }).
+  async function finishVideoDownload(allTracks, format, filename, onProgress, signal) {
     const videoTrack = allTracks.find(t => t.type === 'video' || t.type === 'muxed');
     const audioTrack = allTracks.find(t => t.type === 'audio');
 
@@ -1586,6 +1623,57 @@
       downloadDecryptedFile(trackData[0], safeFilename + ext);
       onProgress(1, 1, 'Download complete!');
     }
+  }
+
+  // PROTOTYPE (#22) — build the parseDashManifest-shaped track list for the new
+  // oneDrive.transcode format from the captured session + the page's AES key.
+  // Every segment URL differs only in `segmentTime`, which steps by `wsd` from
+  // `ppst` up to `ppd`; count = ceil((ppd - ppst) / wsd) (validated live: the
+  // signed session covers every segmentTime, and one-past-the-end 500s).
+  function buildTranscodeTracks() {
+    if (!transcodeSession || !transcodeDecryptKey) return [];
+    const enc = { scheme: 'aes-128-cbc', keyBytes: transcodeDecryptKey.keyBytes, iv: transcodeDecryptKey.iv };
+    const tracks = [];
+    for (const [name, t] of Object.entries(transcodeSession.tracks)) {
+      if (!t.initUrl || !t.sampleSegmentUrl) continue;
+      const wsd = Number(t.wsd), ppd = Number(t.ppd), ppst = Number(t.ppst || 0);
+      if (!(wsd > 0) || !(ppd > 0)) continue;
+      const count = Math.ceil((ppd - ppst) / wsd);
+      const segments = [];
+      for (let i = 0; i < count; i++) {
+        const u = new URL(t.sampleSegmentUrl);
+        u.searchParams.set('segmentTime', String(ppst + i * wsd));
+        segments.push(u.toString());
+      }
+      const type = (name === 'video' || name === 'audio') ? name : name;
+      tracks.push({
+        type,
+        mimeType: type === 'audio' ? 'audio/mp4' : 'video/mp4',
+        initUrl: t.initUrl,
+        segments,
+        encryption: enc
+      });
+    }
+    return tracks;
+  }
+
+  // PROTOTYPE (#22) — download entry point for the new format.
+  async function triggerTranscodeVideoDownload(format, filename, onProgress, signal) {
+    onProgress(0, 1, 'Preparing segments...');
+    const allTracks = buildTranscodeTracks();
+    if (!allTracks.length) {
+      throw new Error('Could not build the video from the captured session. Start playback, wait a moment, then try again.');
+    }
+    await finishVideoDownload(allTracks, format, filename, onProgress, signal);
+  }
+
+  // Route to whichever capture path is active: the legacy videomanifest URL if
+  // we have one, otherwise the new oneDrive.transcode session.
+  async function startVideoDownload(format, filename, onProgress, signal) {
+    if (videoManifestUrl) {
+      return triggerBrowserVideoDownload(format, filename, onProgress, signal);
+    }
+    return triggerTranscodeVideoDownload(format, filename, onProgress, signal);
   }
 
   // Surface DRM rejection as a prominent full-screen modal rather than the
@@ -2022,13 +2110,16 @@
 
     console.log('[Transcript Downloader] Video download button clicked');
 
-    // PROTOTYPE (#22): new format captured but the download path isn't rebuilt.
-    // Surface the captured session (the useful artifact) instead of the old
-    // modal, which depends on a fetchable videomanifest that no longer exists.
+    // PROTOTYPE (#22): new oneDrive.transcode format. We can download it once
+    // both the session template AND the AES key have been captured. If the
+    // session is captured but the key isn't yet, ask the user to wait.
     if (!videoManifestUrl && transcodeSession) {
-      console.log('[Transcript Downloader] PROTOTYPE — new oneDrive.transcode format detected. Captured session:');
-      console.dir(transcodeSession);
-      alert('This recording uses SharePoint’s new video format. Capture works, but the download rebuild for it is still in progress (see issue #22). The captured session has been logged to the console.');
+      if (!transcodeDecryptKey) {
+        alert('Almost ready — still capturing the video key. Start playback if you haven’t, wait a moment, then click Download again.');
+        console.warn('[Transcript Downloader] Transcode session captured but decryption key not yet available');
+        return;
+      }
+      showVideoModal();
       return;
     }
 
@@ -2190,7 +2281,7 @@
       status.textContent = '';
 
       try {
-        await triggerBrowserVideoDownload(
+        await startVideoDownload(
           selectedBrowserFormat, filename,
           (done, total, text) => {
             bar.style.width = (total > 0 ? Math.round((done / total) * 100) : 0) + '%';
