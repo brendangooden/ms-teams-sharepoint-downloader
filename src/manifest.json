@@ -11,6 +11,7 @@
   ],
   "host_permissions": [
     "https://*.sharepoint.com/*",
+    "https://*.sharepoint-df.com/*",
     "https://*.sharepoint.com.mcas.ms/*",
     "https://*.svc.ms/*",
     "https://teams.microsoft.com/*",
@@ -21,6 +22,7 @@
     {
       "matches": [
         "https://*.sharepoint.com/*",
+        "https://*.sharepoint-df.com/*",
         "https://*.sharepoint.com.mcas.ms/*",
         "https://teams.microsoft.com/*",
         "https://teams.cloud.microsoft/*",
@@ -34,6 +36,7 @@
     {
       "matches": [
         "https://*.sharepoint.com/*",
+        "https://*.sharepoint-df.com/*",
         "https://*.sharepoint.com.mcas.ms/*",
         "https://teams.microsoft.com/*",
         "https://teams.cloud.microsoft/*",
@@ -58,6 +61,7 @@
       "resources": ["intercept.js", "mux-worker.js"],
       "matches": [
         "https://*.sharepoint.com/*",
+        "https://*.sharepoint-df.com/*",
         "https://*.sharepoint.com.mcas.ms/*",
         "https://teams.microsoft.com/*",
         "https://teams.cloud.microsoft/*",
