@@ -297,7 +297,12 @@
     return `${h}:${m}:${s}`;
   }
 
-  function convertJSONToVTT(transcript) {
+  // hh:mm:ss without milliseconds, for the Grouped VTT timestamps option
+  function secondsToClock(seconds) {
+    return secondsToVTT(Math.floor(seconds)).slice(0, 8);
+  }
+
+  function convertJSONToVTT(transcript, options = {}) {
     const data = JSON.parse(transcript);
     const entries = data.entries || [];
     let vtt = 'WEBVTT\n\n';
@@ -307,22 +312,31 @@
       const end = secondsToVTT(timeToSeconds(entry.endOffset));
       const speaker = entry.speakerDisplayName || 'Unknown';
       const text = entry.text || '';
+      // Players don't display the <v> voice name, so it only shows on screen
+      // when it's repeated in the cue text
+      const cueText = options.vttSpeakerNames ? `${speaker}: ${text}` : text;
       
       vtt += `${entry.id || index + 1}\n`;
       vtt += `${start} --> ${end}\n`;
-      vtt += `<v ${speaker}>${text}\n\n`;
+      vtt += `<v ${speaker}>${cueText}\n\n`;
     });
     
     return vtt;
   }
 
   // Convert JSON to grouped text format
-  function convertJSONToGrouped(jsonText) {
+  function convertJSONToGrouped(jsonText, options = {}) {
     const data = JSON.parse(jsonText);
     const entries = data.entries || [];
     const grouped = [];
     let currentSpeaker = null;
     let bufferText = '';
+    let blockStart = null;
+
+    // "[00:04:12] " for the start of the current speaker's block, when enabled
+    const stamp = () => (options.groupedTimestamps && blockStart)
+      ? `[${secondsToClock(timeToSeconds(blockStart))}] `
+      : '';
     
     entries.forEach((entry, i) => {
       const speaker = entry.speakerDisplayName || 'Unknown';
@@ -330,10 +344,11 @@
       
       if (speaker !== currentSpeaker) {
         if (bufferText) {
-          grouped.push(`${currentSpeaker}: ${bufferText.trim()}`);
+          grouped.push(`${stamp()}${currentSpeaker}: ${bufferText.trim()}`);
         }
         currentSpeaker = speaker;
         bufferText = text;
+        blockStart = entry.startOffset;
       } else {
         bufferText += ' ' + text;
       }
@@ -341,7 +356,7 @@
     
     // Flush last buffer
     if (bufferText && currentSpeaker) {
-      grouped.push(`${currentSpeaker}: ${bufferText.trim()}`);
+      grouped.push(`${stamp()}${currentSpeaker}: ${bufferText.trim()}`);
     }
     
     return grouped.join('\n\n');
@@ -439,6 +454,18 @@
     persistSuffixOverrides();
   }
 
+  // Opt-in output options, toggled from the format cards and loaded in `initialize()`
+  // Both default to off so existing downloads stay byte-for-byte the same
+  //   vttSpeakerNames   - "Name: " at the start of each VTT cue's text
+  //   groupedTimestamps - "[hh:mm:ss] " at the start of each Grouped VTT block
+  const transcriptOptions = { vttSpeakerNames: false, groupedTimestamps: false };
+
+  function persistTranscriptOptions() {
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.sync) {
+      chrome.storage.sync.set({ transcriptOptions });
+    }
+  }
+
   function updateButtonText(format) {
     const modalButton = document.querySelector('#modalDownload');
     if (!modalButton) return;
@@ -465,7 +492,7 @@
     // Generate preview for grouped format - escape HTML
     let groupedPreview = 'Loading preview...';
     if (transcriptData) {
-      const grouped = convertJSONToGrouped(transcriptData);
+      const grouped = convertJSONToGrouped(transcriptData, transcriptOptions);
       groupedPreview = escapeHtml(grouped.substring(0, 500) + '...');
     }
     
@@ -490,12 +517,20 @@
           <div class="format-option" data-format="vtt">
             <h3>VTT <span class="format-badge">.vtt</span></h3>
             <p>Standard WebVTT subtitle format with timestamps</p>
+            <label class="format-toggle" title="Adds the speaker's name to each caption, so video players show who is talking">
+              <input type="checkbox" data-option="vttSpeakerNames" />
+              Speaker names in captions
+            </label>
             <div class="format-sample">${vttPreview}</div>
           </div>
           
           <div class="format-option" data-format="vtt-grouped">
             <h3>Grouped VTT <span class="format-badge">.txt</span></h3>
             <p>Optimized for LLMs - consecutive messages grouped by speaker</p>
+            <label class="format-toggle" title="Adds the time each speaker starts talking, e.g. [00:04:12]">
+              <input type="checkbox" data-option="groupedTimestamps" />
+              Timestamps
+            </label>
             <div class="format-sample">${groupedPreview}</div>
           </div>
         </div>
@@ -600,6 +635,23 @@
       });
     });
     
+    // Option switches live inside their card, so the click also selects that
+    // format. The card's preview is re-rendered so it matches what will be saved.
+    modal.querySelectorAll('.format-toggle input').forEach(input => {
+      const key = input.getAttribute('data-option');
+      input.checked = transcriptOptions[key];
+      input.addEventListener('change', () => {
+        transcriptOptions[key] = input.checked;
+        persistTranscriptOptions();
+        if (!transcriptData) return;
+        vttData = convertJSONToVTT(transcriptData, transcriptOptions);
+        modal.querySelector('[data-format="vtt"] .format-sample').textContent =
+          vttData.substring(0, 500) + '...';
+        modal.querySelector('[data-format="vtt-grouped"] .format-sample').textContent =
+          convertJSONToGrouped(transcriptData, transcriptOptions).substring(0, 500) + '...';
+      });
+    });
+
     // Update filename suffix when format changes
     function updateFilenameSuffix(format) {
       renderSuffixField(format);
@@ -1004,7 +1056,7 @@
       console.log('[Transcript Downloader] JSON data fetched successfully');
       
       // Convert JSON to VTT for preview
-      vttData = convertJSONToVTT(transcriptData);
+      vttData = convertJSONToVTT(transcriptData, transcriptOptions);
       console.debug('[Transcript Downloader] VTT conversion complete');
 
       // Show format selection modal with all previews
@@ -1030,7 +1082,7 @@
       outputData = vttData;
     } else if (selectedFormat === 'vtt-grouped') {
       // Convert JSON to grouped format
-      outputData = convertJSONToGrouped(transcriptData);
+      outputData = convertJSONToGrouped(transcriptData, transcriptOptions);
     }
 
     // `typeof` rather than `||` bcz an empty suffix is a valid choice
@@ -2357,10 +2409,10 @@
     // race). The intercept re-posts on this request.
     requestTranscriptContext();
 
-    // Pull saved per-track concurrency and filename suffix overrides from sync storage
+    // Pull saved per-track concurrency, filename suffix overrides and transcript options from sync storage
     // Fall back to the module defaults if absent or unusable
     if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.sync) {
-      chrome.storage.sync.get(['videoDownloadConcurrency', 'filenameSuffixes'], (result) => {
+      chrome.storage.sync.get(['videoDownloadConcurrency', 'filenameSuffixes', 'transcriptOptions'], (result) => {
         const saved = parseInt(result.videoDownloadConcurrency, 10);
         if (VIDEO_CONCURRENCY_OPTIONS.includes(saved)) videoDownloadConcurrency = saved;
         // Plain object check
@@ -2368,6 +2420,11 @@
         const suffixes = result.filenameSuffixes;
         if (suffixes && typeof suffixes === 'object' && !Array.isArray(suffixes)) {
           filenameSuffixOverrides = suffixes;
+        }
+        // Only an explicit `true` turns an option on
+        const opts = result.transcriptOptions;
+        if (opts && typeof opts === 'object') {
+          for (const key of Object.keys(transcriptOptions)) transcriptOptions[key] = opts[key] === true;
         }
       });
     }
