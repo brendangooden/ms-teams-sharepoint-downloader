@@ -57,6 +57,10 @@
   let videoDownloadConcurrency = 4;
   const VIDEO_CONCURRENCY_OPTIONS = [1, 2, 4, 8, 16];
 
+  // "Add subtitles from the transcript" switch in the video modal. Off by
+  // default so existing downloads don't change. Persisted via chrome.storage.sync.
+  let videoSubtitles = false;
+
   // Inline SVG download glyph (down-arrow into tray) — clearer "downloadable"
   // affordance than emoji icons. Shared by the legacy command-bar button and
   // the floating widget so both feel consistent.
@@ -360,6 +364,19 @@
     }
     
     return grouped.join('\n\n');
+  }
+
+  // Cues for the subtitle track the video download can add. The speaker's
+  // name goes in the text since players don't show it any other way.
+  function convertJSONToSubtitleCues(jsonText) {
+    const entries = JSON.parse(jsonText).entries || [];
+    return entries
+      .filter(entry => entry.text)
+      .map(entry => ({
+        start: timeToSeconds(entry.startOffset),
+        end: timeToSeconds(entry.endOffset),
+        text: `${entry.speakerDisplayName || 'Unknown'}: ${entry.text}`
+      }));
   }
 
   // ============================================================================
@@ -1027,6 +1044,16 @@
     return jsonResponse.text();
   }
 
+  // Transcript JSON for the video modal's subtitles option, found the same way
+  // the Download Transcript button finds it. Null when there is no transcript.
+  async function loadTranscriptForSubtitles() {
+    if (transcriptData) return transcriptData;
+    if (!transcriptUrl) await fetchTranscriptUrl();
+    if (!transcriptUrl) return null;
+    transcriptData = await fetchTranscriptJson();
+    return transcriptData;
+  }
+
   // Handle download button click - show format selection modal
   async function handleDownloadClick(event) {
     event.preventDefault();
@@ -1536,7 +1563,7 @@
   }
 
   let _muxPathLogged = false;
-  function postChunksToWorker(worker, videoChunks, audioChunks) {
+  function postChunksToWorker(worker, videoChunks, audioChunks, subtitles) {
     if (_transferablesSupported !== false) {
       try {
         const videoBufs = videoChunks.map(normalizeToArrayBuffer);
@@ -1549,7 +1576,7 @@
             ...built.skipped
           });
         }
-        worker.postMessage({ video: videoBufs, audio: audioBufs }, built.list);
+        worker.postMessage({ video: videoBufs, audio: audioBufs, subtitles }, built.list);
         if (!_muxPathLogged) {
           console.log('[Transcript Downloader] mux: using transferables path (' + built.list.length + ' buffers transferred)');
           _muxPathLogged = true;
@@ -1565,14 +1592,14 @@
 
     const videoBufs = videoChunks.map(b => b.slice(0));
     const audioBufs = audioChunks.map(b => b.slice(0));
-    worker.postMessage({ video: videoBufs, audio: audioBufs });
+    worker.postMessage({ video: videoBufs, audio: audioBufs, subtitles });
     if (!_muxPathLogged) {
       console.log('[Transcript Downloader] mux: using structured-clone path (' + (videoBufs.length + audioBufs.length) + ' buffers copied)');
       _muxPathLogged = true;
     }
   }
 
-  async function muxTracks(videoChunks, audioChunks, onProgress) {
+  async function muxTracks(videoChunks, audioChunks, onProgress, subtitles) {
     const workerUrl = await getMuxWorkerUrl();
     return await new Promise((resolve, reject) => {
       const worker = new Worker(workerUrl);
@@ -1594,7 +1621,7 @@
       };
 
       try {
-        postChunksToWorker(worker, videoChunks, audioChunks);
+        postChunksToWorker(worker, videoChunks, audioChunks, subtitles);
       } catch (error) {
         worker.terminate();
         reject(error);
@@ -1603,7 +1630,7 @@
   }
 
 
-  async function triggerBrowserVideoDownload(format, filename, onProgress, signal) {
+  async function triggerBrowserVideoDownload(format, filename, onProgress, signal, subtitles) {
     onProgress(0, 1, 'Fetching manifest...');
     const resp = await fetch(videoManifestUrl, svcMsFetchInit({ signal }));
     if (!resp.ok) throw new Error(`Manifest fetch failed: HTTP ${resp.status}`);
@@ -1635,14 +1662,16 @@
       throw err;
     }
 
-    await finishVideoDownload(allTracks, format, filename, onProgress, signal);
+    return finishVideoDownload(allTracks, format, filename, onProgress, signal, subtitles);
   }
 
   // Pick the requested track(s) from a parsed track list, download + decrypt
   // their segments, and mux/save. Shared by the legacy videomanifest path and
   // the new oneDrive.transcode path — both produce the same `allTracks` shape
   // ({ type, mimeType, initUrl, segments, encryption }).
-  async function finishVideoDownload(allTracks, format, filename, onProgress, signal) {
+  // `subtitles` can only be added while muxing separate video + audio tracks.
+  // Resolves to { subtitlesAdded } so the modal can say whether they made it in.
+  async function finishVideoDownload(allTracks, format, filename, onProgress, signal, subtitles) {
     const videoTrack = allTracks.find(t => t.type === 'video' || t.type === 'muxed');
     const audioTrack = allTracks.find(t => t.type === 'audio');
 
@@ -1667,7 +1696,7 @@
     const trackData = await downloadDashSegments(tracksToDownload, onProgress, signal);
 
     if (isSeparate) {
-      const muxed = await muxTracks(trackData[0], trackData[1], onProgress);
+      const muxed = await muxTracks(trackData[0], trackData[1], onProgress, subtitles);
       downloadDecryptedFile(muxed, safeFilename + '.mp4');
       onProgress(1, 1, 'Download complete!');
     } else {
@@ -1675,6 +1704,7 @@
       downloadDecryptedFile(trackData[0], safeFilename + ext);
       onProgress(1, 1, 'Download complete!');
     }
+    return { subtitlesAdded: isSeparate && !!(subtitles && subtitles.length) };
   }
 
   // Build the parseDashManifest-shaped track list for the oneDrive.transcode
@@ -1710,22 +1740,22 @@
   }
 
   // Download entry point for the oneDrive.transcode format (issue #22).
-  async function triggerTranscodeVideoDownload(format, filename, onProgress, signal) {
+  async function triggerTranscodeVideoDownload(format, filename, onProgress, signal, subtitles) {
     onProgress(0, 1, 'Preparing segments...');
     const allTracks = buildTranscodeTracks();
     if (!allTracks.length) {
       throw new Error('Could not read the video session yet. Wait a few seconds after the page loads, then try again.');
     }
-    await finishVideoDownload(allTracks, format, filename, onProgress, signal);
+    return finishVideoDownload(allTracks, format, filename, onProgress, signal, subtitles);
   }
 
   // Route to whichever capture path is active: the legacy videomanifest URL if
   // we have one, otherwise the new oneDrive.transcode session.
-  async function startVideoDownload(format, filename, onProgress, signal) {
+  async function startVideoDownload(format, filename, onProgress, signal, subtitles) {
     if (videoManifestUrl) {
-      return triggerBrowserVideoDownload(format, filename, onProgress, signal);
+      return triggerBrowserVideoDownload(format, filename, onProgress, signal, subtitles);
     }
-    return triggerTranscodeVideoDownload(format, filename, onProgress, signal);
+    return triggerTranscodeVideoDownload(format, filename, onProgress, signal, subtitles);
   }
 
   // Surface DRM rejection as a prominent full-screen modal rather than the
@@ -2239,6 +2269,11 @@
         <div class="video-format-cards">
           ${renderCards(browserFormats, 'dl')}
         </div>
+        <label class="format-toggle video-subtitles-toggle">
+          <input type="checkbox" id="videoSubtitlesToggle" />
+          Add subtitles from the transcript
+          <span class="video-subtitles-hint" id="videoSubtitlesHint"></span>
+        </label>
         <button class="browser-dl-action-btn" id="browserDlActionBtn" disabled>Select a format above</button>
         <div class="browser-download-section" id="browserDownloadSection" style="display: none; margin-top: 12px;">
           <div class="browser-dl-progress-bar-wrap">
@@ -2287,6 +2322,7 @@
         selectedBrowserFormat = card.getAttribute('data-format');
         dlBtn.disabled = false;
         dlBtn.textContent = '\u2193 Download';
+        renderSubtitlesToggle();
       });
     });
 
@@ -2297,6 +2333,28 @@
       dlBtn.disabled = false;
       dlBtn.textContent = '\u2193 Download';
     }
+
+    // Subtitles go in as a track while muxing, so only Video + Audio can carry
+    // them. g_fileInfo tells us up-front when there's no transcript to use.
+    const subtitlesInput = modal.querySelector('#videoSubtitlesToggle');
+    const subtitlesHint = modal.querySelector('#videoSubtitlesHint');
+    function renderSubtitlesToggle() {
+      const noTranscript = !!(gFileTranscriptContext && gFileTranscriptContext.hasTranscripts === false);
+      subtitlesInput.disabled = noTranscript || selectedBrowserFormat !== 'video-audio';
+      subtitlesInput.checked = videoSubtitles && !subtitlesInput.disabled;
+      subtitlesHint.textContent = noTranscript
+        ? 'This recording has no transcript'
+        : selectedBrowserFormat !== 'video-audio'
+          ? 'Video + Audio only'
+          : 'Includes who is speaking. Shown under Subtitles in your video player.';
+    }
+    subtitlesInput.addEventListener('change', () => {
+      videoSubtitles = subtitlesInput.checked;
+      if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.sync) {
+        chrome.storage.sync.set({ videoSubtitles });
+      }
+    });
+    renderSubtitlesToggle();
 
     // Concurrency selector \u2014 reads/writes the module-scoped
     // videoDownloadConcurrency. Persisted in chrome.storage.sync.
@@ -2322,10 +2380,12 @@
       }
 
       const filename = modal.querySelector('#videoFilenameInput').value.trim() || 'video';
+      const withSubtitles = subtitlesInput.checked;
       abortController = new AbortController();
       dlBtn.textContent = 'Cancel Download';
       dlBtn.classList.add('browser-dl-cancelling');
       dlCards.forEach(c => { c.style.pointerEvents = 'none'; c.style.opacity = '0.6'; });
+      subtitlesInput.disabled = true;
 
       const section = modal.querySelector('#browserDownloadSection');
       const bar = modal.querySelector('#browserDlProgressBar');
@@ -2336,17 +2396,36 @@
       status.textContent = '';
 
       try {
-        await startVideoDownload(
+        let subtitles = null;
+        if (withSubtitles) {
+          status.textContent = 'Fetching transcript for subtitles...';
+          try {
+            const json = await loadTranscriptForSubtitles();
+            if (json) subtitles = convertJSONToSubtitleCues(json);
+          } catch (e) {
+            console.warn('[Transcript Downloader] Could not load the transcript for subtitles:', e);
+          }
+        }
+        const result = await startVideoDownload(
           selectedBrowserFormat, filename,
           (done, total, text) => {
             bar.style.width = (total > 0 ? Math.round((done / total) * 100) : 0) + '%';
             status.textContent = text || '';
           },
-          abortController.signal
+          abortController.signal,
+          subtitles
         );
         bar.style.width = '100%';
         bar.classList.add('browser-dl-complete');
-        status.textContent = 'Download complete!';
+        if (!withSubtitles) {
+          status.textContent = 'Download complete!';
+        } else if (result.subtitlesAdded) {
+          status.textContent = 'Download complete, with subtitles.';
+        } else {
+          status.textContent = subtitles && subtitles.length
+            ? 'Download complete, but subtitles couldn\'t be added to this recording.'
+            : 'Download complete, without subtitles: no transcript was found.';
+        }
       } catch (err) {
         if (err.name === 'AbortError') {
           status.textContent = 'Download cancelled.';
@@ -2378,6 +2457,7 @@
         dlBtn.textContent = '\u2193 Download';
         dlBtn.classList.remove('browser-dl-cancelling');
         dlCards.forEach(c => { c.style.pointerEvents = ''; c.style.opacity = ''; });
+        renderSubtitlesToggle();
       }
     });
 
@@ -2416,9 +2496,10 @@
     // Pull saved per-track concurrency, filename suffix overrides and transcript options from sync storage
     // Fall back to the module defaults if absent or unusable
     if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.sync) {
-      chrome.storage.sync.get(['videoDownloadConcurrency', 'filenameSuffixes', 'transcriptOptions'], (result) => {
+      chrome.storage.sync.get(['videoDownloadConcurrency', 'filenameSuffixes', 'transcriptOptions', 'videoSubtitles'], (result) => {
         const saved = parseInt(result.videoDownloadConcurrency, 10);
         if (VIDEO_CONCURRENCY_OPTIONS.includes(saved)) videoDownloadConcurrency = saved;
+        videoSubtitles = result.videoSubtitles === true;
         // Plain object check
         // Sync storage can hand back anything a previous version (or another device) wrote
         const suffixes = result.filenameSuffixes;

@@ -1,7 +1,8 @@
 // Off-main-thread fMP4 → flat MP4 muxer. Receives one message:
-//   { video: ArrayBuffer[], audio: ArrayBuffer[] }
+//   { video: ArrayBuffer[], audio: ArrayBuffer[], subtitles?: {start, end, text}[] }
 // where each array is [initSegment, ...mediaSegments] for that track (i.e. the
-// shape downloadDashSegments returns). Concatenates internally, runs the
+// shape downloadDashSegments returns), and `subtitles` (seconds) optionally
+// adds a timed-text track built from the transcript. Concatenates internally, runs the
 // existing splice-moov / defragment / write-flat-MP4 pipeline, posts back:
 //   { result: Uint8Array } or { error: string }
 // and streams progress as:
@@ -11,7 +12,7 @@
 // used to run on the UI thread; only the I/O wrapper at top + bottom is new.
 
 self.addEventListener('message', async (event) => {
-  const { video, audio } = event.data || {};
+  const { video, audio, subtitles } = event.data || {};
   if (!video || !audio) {
     self.postMessage({ error: 'mux-worker: missing video or audio chunks' });
     return;
@@ -35,7 +36,7 @@ self.addEventListener('message', async (event) => {
   try {
     const videoUint8 = concatChunks(video);
     const audioUint8 = concatChunks(audio);
-    const result = mux(videoUint8, audioUint8, reportProgress);
+    const result = mux(videoUint8, audioUint8, reportProgress, subtitles);
     // Transfer the result buffer back rather than structured-cloning it
     self.postMessage({ result }, [result.buffer]);
   } catch (err) {
@@ -48,7 +49,7 @@ self.addEventListener('message', async (event) => {
 // defragments to flat (non-fragmented) MP4 compatible with VLC seeking.
 // ============================================================================
 
-function mux(videoUint8, audioUint8, onProgress) {
+function mux(videoUint8, audioUint8, onProgress, subtitles) {
   function readU32(b, off) {
     return ((b[off] << 24) | (b[off+1] << 16) | (b[off+2] << 8) | b[off+3]) >>> 0;
   }
@@ -455,12 +456,85 @@ function mux(videoUint8, audioUint8, onProgress) {
   patchTkhdDuration(newVTrak, vMovieDur);
   patchTkhdDuration(newATrak, aMovieDur);
 
-  const newMoov = makeBox('moov', existingMvhd, newVTrak, newATrak);
+  // ---- Optional subtitle track (3GPP timed text / tx3g) from the transcript ----
+  // Same layout and defaults ffmpeg writes for `-c:s mov_text` in an MP4. Each sample is a
+  // 16-bit length + UTF-8 text, and samples have to cover the timeline end to
+  // end, so the gaps between cues become empty samples. Transcript cues can
+  // overlap, so each one is cut off where the next one starts.
+  let newSTrak = null;
+  let sData = new Uint8Array(0);
+  if (Array.isArray(subtitles) && subtitles.length) {
+    onProgress(0, 1, 'Adding subtitles...');
+    const enc = new TextEncoder();
+    const endMs = Math.round(Math.max(vTotalDur / vTimescale, aTotalDur / aTimescale) * 1000);
+    const sSamples = [];
+    const sPayloads = [];
+    function pushSample(durationMs, text) {
+      const bytes = enc.encode(text);
+      const payload = new Uint8Array(2 + bytes.length);
+      payload[0] = (bytes.length >> 8) & 0xFF;
+      payload[1] = bytes.length & 0xFF;
+      payload.set(bytes, 2);
+      sSamples.push({ duration: durationMs, size: payload.length, flags: 0, ctsOffset: 0 });
+      sPayloads.push(payload);
+    }
+
+    const cues = subtitles.slice().sort((x, y) => x.start - y.start);
+    let t = 0;
+    for (let i = 0; i < cues.length; i++) {
+      const start = Math.max(Math.round(cues[i].start * 1000), t);
+      const nextStart = i + 1 < cues.length ? Math.round(cues[i + 1].start * 1000) : endMs;
+      const end = Math.min(Math.round(cues[i].end * 1000), nextStart, endMs);
+      if (end <= start) continue;
+      if (start > t) pushSample(start - t, '');
+      pushSample(end - start, cues[i].text);
+      t = end;
+    }
+
+    if (sSamples.length) {
+      const sTkhd = makeFullBox('tkhd', 0, 3, new Uint8Array(80)); // flags: enabled | in movie
+      writeU32(sTkhd, 20, 3);                                       // track_ID
+      sTkhd[43] = 3;                                                // alternate_group, as ffmpeg sets for subtitles
+      writeU32(sTkhd, 48, 0x00010000);                              // unity matrix
+      writeU32(sTkhd, 64, 0x00010000);
+      writeU32(sTkhd, 80, 0x40000000);
+
+      const sMdhd = makeFullBox('mdhd', 0, 0, new Uint8Array(20));
+      writeU32(sMdhd, 20, 1000);                                    // timescale: milliseconds
+      writeU32(sMdhd, 24, t);                                       // duration
+      sMdhd[28] = 0x55; sMdhd[29] = 0xC4;                           // language 'und'
+
+      const sHdlr = makeFullBox('hdlr', 0, 0,
+        cat(new Uint8Array(4), enc.encode('sbtl'), new Uint8Array(12), enc.encode('Transcript\0')));
+      const nmhd = makeFullBox('nmhd', 0, 0, new Uint8Array(0));
+
+      const ftab = makeBox('ftab', new Uint8Array([0x00,0x01, 0x00,0x01, 0x05, 0x41,0x72,0x69,0x61,0x6C])); // font 1 = "Arial"
+      const tx3g = makeBox('tx3g', new Uint8Array([
+        0x00,0x00,0x00,0x00,0x00,0x00, 0x00,0x01,  // reserved, data_reference_index
+        0x00,0x00,0x00,0x00,                       // displayFlags
+        0x01, 0xFF,                                // centred, bottom
+        0x00,0x00,0x00,0xFF,                       // background RGBA
+        0x00,0x00, 0x00,0x00, 0x00,0x00, 0x00,0x00, // default text box
+        0x00,0x00, 0x00,0x00, 0x00,0x01, 0x00, 0x10, 0xFF,0xFF,0xFF,0xFF, // style: font 1, size 16, white
+      ]), ftab);
+      const sStsd = makeFullBox('stsd', 0, 0, cat(new Uint8Array([0x00,0x00,0x00,0x01]), tx3g));
+
+      newSTrak = buildTrak({ tkhd: sTkhd, mdhd: sMdhd, hdlr: sHdlr, stsd: sStsd, isVideo: false, xmhd: nmhd },
+        sSamples, sSamples.length);
+      patchTkhdDuration(newSTrak, Math.round(t * movieTimescale / 1000));
+      writeU32(existingMvhd, mvhdV === 1 ? 116 : 104, 4);          // next_track_ID
+      sData = cat(...sPayloads);
+    }
+  }
+
+  const newMoov = newSTrak
+    ? makeBox('moov', existingMvhd, newVTrak, newATrak, newSTrak)
+    : makeBox('moov', existingMvhd, newVTrak, newATrak);
 
   const vFtypBox = findBox(videoUint8, 'ftyp');
   const ftyp = vFtypBox ? videoUint8.slice(vFtypBox.offset, vFtypBox.offset + vFtypBox.size) : new Uint8Array(0);
 
-  const mdatPayload = cat(vData, aData);
+  const mdatPayload = cat(vData, aData, sData);
   const mdatBox = new Uint8Array(8 + mdatPayload.length);
   writeU32(mdatBox, 0, mdatBox.length);
   mdatBox[4]=0x6D; mdatBox[5]=0x64; mdatBox[6]=0x61; mdatBox[7]=0x74;
@@ -502,6 +576,7 @@ function mux(videoUint8, audioUint8, onProgress) {
 
   patchStcoInMoov(newMoov, 0, videoDataOffset);
   patchStcoInMoov(newMoov, 1, audioDataOffset);
+  if (newSTrak) patchStcoInMoov(newMoov, 2, audioDataOffset + aData.length);
 
   return cat(ftyp, newMoov, mdatBox);
 }

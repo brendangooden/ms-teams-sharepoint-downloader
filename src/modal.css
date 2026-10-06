@@ -613,6 +613,36 @@
   background: var(--ttd-danger) !important;
 }
 
+/* "Add subtitles from the transcript" — same switch as the transcript modal,
+   in the video modal's red */
+.video-subtitles-toggle {
+  flex-wrap: wrap;
+  margin: 0 0 4px;
+}
+
+.video-subtitles-toggle input:checked {
+  background: var(--ttd-danger);
+}
+
+.video-subtitles-toggle input:focus-visible {
+  outline-color: var(--ttd-danger);
+}
+
+.video-subtitles-toggle:has(input:disabled) {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.video-subtitles-toggle input:disabled {
+  cursor: default;
+}
+
+.video-subtitles-hint {
+  font-size: 12px;
+  font-style: italic;
+  color: var(--ttd-text-dim);
+}
+
 @media (max-width: 768px) {
   .video-modal-content {
     max-width: 95%;
