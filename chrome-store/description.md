@@ -27,7 +27,7 @@ WHERE IT WORKS
 
 VIDEO & AUDIO DOWNLOAD
 
-A red "Download Video" button appears in the top command bar of any recording. Click it, pick a format, and the file lands in your Downloads folder. No external tools.
+A "Download" menu appears in the command bar of any recording, next to Record and Upload. Pick a format and the file lands in your Downloads folder. No external tools.
 
 Three format options:
 🎬 Video + Audio (.mp4) — Best quality, original streams copied
@@ -63,9 +63,8 @@ Three professional formats:
 - Easy to scan and summarise
 
 How it works:
-- Click the "Transcript" tab on a recording page
-- A purple "Download Transcript" button appears in the transcript panel
-- Click it to see live previews of all three formats
+- Open the "Download" menu in the command bar and pick "Transcript…" (or use the Download Transcript button in the transcript panel)
+- See live previews of all three formats
 - Choose your format, customize the filename, and download
 
 If the meeting was never transcribed, the extension shows a clear "no transcript available" dialog rather than silently failing.
@@ -88,8 +87,8 @@ HOW TO USE
 
 1. Install the extension from the Chrome Web Store.
 2. Open a meeting recording or shared video in Teams, SharePoint, or the Stream player.
-3. For video: click "Download Video" in the command bar (or the floating banner). Pick a format and click Download — the file lands in your Downloads folder. Tune the "Parallel segment downloads" selector if you want faster (higher) or gentler-on-throttling (lower) downloads.
-4. For transcripts: click the Transcript tab, then "Download Transcript", choose a format, and save.
+3. For video: click "Download" in the command bar and pick Video + audio, Audio only or Video only (or use the floating banner). Click Download in the dialog — the file lands in your Downloads folder. Tune the "Parallel segment downloads" selector if you want faster (higher) or gentler-on-throttling (lower) downloads.
+4. For transcripts: click "Download", then "Transcript…", choose a format, and save.
 
 
 PERFECT FOR

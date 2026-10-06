@@ -11,7 +11,7 @@
 
 Download videos and transcripts from MS Teams meeting recordings, SharePoint, and **Microsoft Stream** (videos uploaded to SharePoint/OneDrive and played through the Stream player) — even when the built-in download button is disabled.
 
-![Red Download Video and purple Download Transcript buttons added to the SharePoint command bar](demo-website/src/assets/screenshots/dark/recording.png)
+![The Download menu in the SharePoint command bar, open on Video + audio, Audio only, Video only and Transcript](demo-website/src/assets/screenshots/dark/recording.png)
 
 Works on:
 
@@ -67,14 +67,14 @@ Open <https://chromewebstore.google.com/detail/ms-teams-transcript-downl/hmljlkh
 ### Downloading video / audio
 
 1. Open any meeting recording or shared MP4 in Teams, SharePoint, or the Stream-on-SharePoint player.
-2. Click the red **Download Video** button in the command bar (or in the floating banner at the top of the page).
-3. Pick a format and click **Download**. The file lands in your Downloads folder.
+2. Click **Download** in the command bar and pick **Video + audio**, **Audio only** or **Video only** (or use **Download video** in the floating banner at the top of the page).
+3. The dialog opens on that format. Click **Download**. The file lands in your Downloads folder.
 4. *Optional:* tune the **Parallel segment downloads** selector (default 4) — higher = faster, but increases the chance of SharePoint throttling. 429s are auto-retried.
 
 ### Downloading the transcript
 
 1. Open the **Transcript** tab on a recording.
-2. Click **Download Transcript** in the transcript panel (or in the floating banner).
+2. Click **Download** → **Transcript…** in the command bar (or **Download Transcript** in the transcript panel or the floating banner).
 3. Pick a format in the modal and click **Download**.
 
 Your last-used format is remembered as the default.
