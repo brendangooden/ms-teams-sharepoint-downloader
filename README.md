@@ -27,12 +27,14 @@ Works on:
 - **In-browser download** — Video+Audio (MP4), Audio Only (M4A), or Video Only. No extra tools needed.
 - **Parallel segment fetching** — tunable concurrency (1–16 segments at once) with automatic backoff if SharePoint throttles. Multi-threaded mux off the UI thread.
 - **Editable filename** — auto-derived from the page title.
+- **Optional subtitles** — Video + Audio downloads can carry the transcript as a subtitle track, with speaker names.
 - **Floating banner widget** as a fallback for when the SharePoint command bar re-renders or hides the button.
 
 ### Transcript download
 - **Automatic detection** — the extension watches for the transcript metadata call and adds a Download Transcript button.
 - **Three formats** — RAW JSON, standard WebVTT, or Grouped VTT (consecutive lines from the same speaker collapsed into a block).
 - **Live preview** of each format in the modal.
+- **Optional timestamps and speaker names** — a `[hh:mm:ss]` start time on each Grouped VTT block, and speaker names in the VTT caption text.
 - **Last-used format remembered** across sessions.
 - Clear dialog if the meeting was never transcribed, instead of a silent failure.
 

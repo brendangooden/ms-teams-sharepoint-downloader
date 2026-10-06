@@ -15,8 +15,8 @@ Sourced from `demo-website/src/assets/screenshots/dark/*.png` (the full-resoluti
 | File | Source aspect | Bars |
 |---|---|---|
 | `screenshots/recording.png` | 1905×791 (2.41:1) | top/bottom letterbox |
-| `screenshots/video-modal.png` | 1080×680 (1.59:1) | small left/right pillarbox |
-| `screenshots/transcript-modal.png` | 1580×798 (1.98:1) | top/bottom letterbox |
+| `screenshots/video-modal.png` | 1170×689 (1.70:1) | small top/bottom letterbox |
+| `screenshots/transcript-modal.png` | 1685×895 (1.88:1) | top/bottom letterbox |
 
 ### Regenerating
 

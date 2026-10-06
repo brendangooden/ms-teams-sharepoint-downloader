@@ -34,6 +34,8 @@ Three format options:
 🎵 Audio Only (.m4a) — Original audio, no re-encoding
 🎬 Video Only (.mp4) — No audio track
 
+Turn on "Add subtitles from the transcript" and Video + Audio downloads get a subtitle track with speaker names, listed under Subtitles in your video player.
+
 Performance:
 - Segments fetched in parallel with a tunable concurrency selector (1 / 2 / 4 / 8 / 16). Default 4 keeps tenant-throttling risk low.
 - Automatic 429 / Retry-After backoff if SharePoint pushes back — no failed downloads from transient throttling.
@@ -55,11 +57,13 @@ Three professional formats:
 📝 VTT Format (.vtt)
 - Standard WebVTT subtitle format with timestamps
 - Speaker voice tags
+- Optional speaker names in the caption text, so video players show who is talking
 - Works with most video players and subtitle editors
 
 🤖 Grouped Text (.txt)
 - Consecutive messages from the same speaker collapsed into a block
 - Clean, readable format optimized for LLMs and human reading
+- Optional [hh:mm:ss] timestamp at the start of each block
 - Easy to scan and summarise
 
 How it works:
