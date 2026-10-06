@@ -528,32 +528,29 @@
   color: var(--ttd-text-info-warn-str);
 }
 
-/* Download tab: prominent download button */
-.browser-dl-action-btn {
-  width: 100%;
-  padding: 12px 20px;
-  background: linear-gradient(135deg, var(--ttd-success-grad-start) 0%, var(--ttd-success-grad-end) 100%);
-  color: white;
-  border: none;
-  border-radius: 8px;
-  font-size: 15px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  margin-top: 12px;
+/* Video modal's footer Download button: same shape as the transcript modal's,
+   in the red of the Download Video button. While a download runs it turns into
+   a plain "Cancel Download" button. */
+.video-download-btn {
+  background: linear-gradient(135deg, var(--ttd-danger) 0%, var(--ttd-danger-strong) 100%);
 }
 
-.browser-dl-action-btn:hover {
-  background: linear-gradient(135deg, var(--ttd-success-grad-end) 0%, var(--ttd-success-grad-start) 100%);
+.video-download-btn:hover {
+  background: linear-gradient(135deg, var(--ttd-danger-strong) 0%, var(--ttd-danger) 100%);
 }
 
-.browser-dl-action-btn:disabled {
-  background: #ccc;
+.video-download-btn:disabled {
+  opacity: 0.6;
   cursor: not-allowed;
 }
 
-.browser-dl-action-btn.browser-dl-cancelling {
-  background: linear-gradient(135deg, var(--ttd-danger) 0%, var(--ttd-danger-strong) 100%);
+.video-download-btn.browser-dl-cancelling {
+  background: var(--ttd-bg-cancel);
+  color: var(--ttd-text-muted);
+}
+
+.video-download-btn.browser-dl-cancelling:hover {
+  background: var(--ttd-bg-cancel-hover);
 }
 
 .video-format-cards {
@@ -882,13 +879,6 @@
     /* Shadows — deeper, since they sit on darker surfaces */
     --ttd-shadow-modal:        0 14px 50px rgba(0, 0, 0, 0.6);
     --ttd-shadow-overlay:      0 20px 70px rgba(0, 0, 0, 0.7);
-  }
-
-  /* The disabled-state browser-dl button is hard-coded grey; nudge it so it
-     doesn't look like a light-mode artefact left in. */
-  .browser-dl-action-btn:disabled {
-    background: #3a3a42;
-    color: #6e6e78;
   }
 
   /* The star badge from shields.io ships its own light-themed colours.

@@ -28,12 +28,12 @@ const shots = [
   {
     ...(await pair(darkVideo, lightVideo)),
     label: 'video download',
-    caption: 'Three formats (MP4 · M4A · MP4 video-only). Tunable parallel segment fetch. Filename auto-derived, editable.',
+    caption: 'Three formats (MP4 · M4A · MP4 video-only). Optional subtitle track with speaker names. Tunable parallel segment fetch. Filename auto-derived, editable.',
   },
   {
     ...(await pair(darkTranscript, lightTranscript)),
     label: 'transcript',
-    caption: 'RAW JSON · WebVTT · Grouped TXT. Live previews. Last format remembered.',
+    caption: 'RAW JSON · WebVTT · Grouped TXT. Optional timestamps and speaker names. Live previews. Last format remembered.',
   },
 ];
 ---
