@@ -79,8 +79,8 @@ if (-not (Test-Path releases/ms-teams-downloader-v<version>.zip)) {
 ```
 
 Verify contents with `unzip -l releases/ms-teams-downloader-v<version>.zip`:
-- Exactly 6 entries.
-- Files: `icons/icon128.png`, `content.js`, `intercept.js`, `manifest.json`, `modal.css`, `mux-worker.js`.
+- Exactly 8 entries.
+- Files: `icons/icon128.png`, `content.js`, `intercept.js`, `manifest.json`, `modal.css`, `mux-worker.js`, `popup.html`, `popup.js`.
 - NO `key.pem`, NO `.DS_Store`, NO `Thumbs.db`.
 
 If any check fails, abort and tell the user.

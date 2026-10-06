@@ -65,7 +65,11 @@ Open <https://chromewebstore.google.com/detail/ms-teams-transcript-downl/hmljlkh
 4. Click **Load unpacked** and select the `src/` folder.
 5. You should see **MS Teams Video & Transcript Downloader** in the list.
 
+After installing, pin the extension from Chrome's puzzle-piece menu. Clicking its toolbar icon shows a short how-to, the sites it works on, and links to the website and the bug report form.
+
 ## Usage
+
+Not sure where to start? Click the extension's toolbar icon for a short how-to and the list of supported sites.
 
 ### Downloading video / audio
 
@@ -89,7 +93,9 @@ src/
 ├── manifest.json   # MV3 — intercept.js runs MAIN/document_start, content.js runs ISOLATED/document_idle
 ├── intercept.js    # fetch() interceptor — captures transcript + video manifest URLs and auth tokens
 ├── content.js      # UI, transcript flow, video download, modals, floating widget
-├── modal.css       # Styles
+├── modal.css       # Styles (the popup reuses its theme tokens)
+├── popup.html      # Toolbar popup: how-to, supported sites, links
+├── popup.js        # Fills in the popup's version from the manifest
 └── icons/
 ```
 

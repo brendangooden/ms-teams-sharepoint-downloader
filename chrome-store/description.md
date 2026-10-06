@@ -85,6 +85,7 @@ KEY FEATURES
 - DRM detection — shows a clear dialog rather than producing an unplayable file
 - No-transcript detection — clear feedback when a meeting was never transcribed
 - Works on Teams web, SharePoint recordings, OneDrive-shared MP4s, and the Stream-on-SharePoint player
+- Toolbar popup with a short how-to, the supported sites, and links to the website and bug reports
 
 
 HOW TO USE

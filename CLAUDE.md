@@ -21,7 +21,7 @@ pwsh scripts/package-extension.ps1
 # Use -Force only if you intentionally want to overwrite an existing zip.
 ```
 
-Verify the result with `unzip -l releases/ms-teams-downloader-v<version>.zip` — expect 6 entries (`icons/icon128.png`, `content.js`, `intercept.js`, `manifest.json`, `modal.css`, `mux-worker.js`) and no `key.pem`.
+Verify the result with `unzip -l releases/ms-teams-downloader-v<version>.zip` — expect 8 entries (`icons/icon128.png`, `content.js`, `intercept.js`, `manifest.json`, `modal.css`, `mux-worker.js`, `popup.html`, `popup.js`) and no `key.pem`.
 
 ## Don'ts
 
