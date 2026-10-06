@@ -1694,13 +1694,14 @@
     const videoTrack = allTracks.find(t => t.type === 'video' || t.type === 'muxed');
     const audioTrack = allTracks.find(t => t.type === 'audio');
 
-    let tracksToDownload, isSeparate = false;
+    let tracksToDownload, isSeparate = false, audioMissing = false;
 
     if (format === 'video-audio') {
       if (!audioTrack || allTracks.length === 1) {
         // Expected for a muxed manifest; otherwise the audio track was never captured
         if (videoTrack && videoTrack.type !== 'muxed') {
           console.warn('[Transcript Downloader] No audio track captured, saving the video track only');
+          audioMissing = true;
         }
         tracksToDownload = [videoTrack || allTracks[0]];
       } else {
@@ -1727,7 +1728,7 @@
       downloadDecryptedFile(trackData[0], safeFilename + ext);
       onProgress(1, 1, 'Download complete!');
     }
-    return { subtitlesAdded: isSeparate && !!(subtitles && subtitles.length) };
+    return { subtitlesAdded: isSeparate && !!(subtitles && subtitles.length), audioMissing };
   }
 
   // Build the parseDashManifest-shaped track list for the oneDrive.transcode
@@ -1762,8 +1763,28 @@
     return tracks;
   }
 
+  // Resolves true once the transcode session has an audio track, false after
+  // `timeoutMs`. Rebuilds the session from Resource Timing itself, because
+  // startTranscodeCapture stops polling after ~60s.
+  async function waitForTranscodeAudio(timeoutMs, signal) {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      const session = buildTranscodeSession(transcodeUrlsFromPerformance());
+      if (session) transcodeSession = session;
+      if (hasTranscodeTrack(transcodeSession, 'audio')) return true;
+      await abortableSleep(250, signal);
+    }
+    return false;
+  }
+
   // Download entry point for the oneDrive.transcode format (issue #22).
   async function triggerTranscodeVideoDownload(format, filename, onProgress, signal, subtitles) {
+    // A click right after the page loads can come before the audio track has
+    // been captured. Give it a few seconds before falling back to video only.
+    if (format === 'video-audio' && !hasTranscodeTrack(transcodeSession, 'audio')) {
+      onProgress(0, 1, 'Waiting for the audio track...');
+      await waitForTranscodeAudio(5000, signal);
+    }
     onProgress(0, 1, 'Preparing segments...');
     const allTracks = buildTranscodeTracks();
     if (!allTracks.length) {
@@ -2440,7 +2461,10 @@
         );
         bar.style.width = '100%';
         bar.classList.add('browser-dl-complete');
-        if (!withSubtitles) {
+        if (result.audioMissing) {
+          status.textContent = 'Download complete, but no audio track was found, so the file has no sound' +
+            (withSubtitles ? ' or subtitles.' : '.');
+        } else if (!withSubtitles) {
           status.textContent = 'Download complete!';
         } else if (result.subtitlesAdded) {
           status.textContent = 'Download complete, with subtitles.';
