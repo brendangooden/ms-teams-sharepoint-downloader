@@ -3,10 +3,10 @@
 Listing copy and screenshot uploads for the [Chrome Web Store](https://chromewebstore.google.com/) page.
 
 - `description.md` — long-form listing copy (paste into the Web Store "Description" field).
-- `screenshots/` — the 3 dark-theme screenshots resized to the **exact** Web Store screenshot spec:
+- `screenshots/` — the dark-theme screenshots at the **exact** Web Store screenshot spec:
   - 1280 × 800 px
   - 24-bit PNG (no alpha)
-  - Up to 5 allowed; we use 3
+  - Up to 5 allowed; we use 4
 
 ## Screenshots
 
@@ -17,6 +17,8 @@ Sourced from `demo-website/src/assets/screenshots/dark/*.png` (the full-resoluti
 | `screenshots/recording.png` | 1905×791 (2.41:1) | top/bottom letterbox |
 | `screenshots/video-modal.png` | 1080×680 (1.59:1) | small left/right pillarbox |
 | `screenshots/transcript-modal.png` | 1580×798 (1.98:1) | top/bottom letterbox |
+
+`screenshots/popup.png` isn't derived from a demo-site image. It's the real toolbar popup (`chrome-extension://<id>/popup.html`, dark theme, rendered at 2x) placed under a mock Chrome toolbar, over a blurred copy of the dark `recording.png`, composed directly at 1280×800.
 
 ### Regenerating
 
