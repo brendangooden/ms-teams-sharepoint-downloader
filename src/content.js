@@ -2042,7 +2042,7 @@
     let anyVisible = false;
 
     if (tBtn) {
-      const legacyTranscript = document.querySelector('#customDownloadTranscript');
+      const legacyTranscript = document.querySelector('#customDownloadTranscript, #customDownloadMenu');
       const show = !legacyTranscript && onVideoPage;
       tBtn.style.display = show ? '' : 'none';
       if (show) anyVisible = true;
@@ -2052,7 +2052,7 @@
         : 'Transcript URL not yet captured — open the Transcript panel or click to try fetching it';
     }
     if (vBtn) {
-      const legacyVideo = document.querySelector('#customDownloadVideo');
+      const legacyVideo = document.querySelector('#customDownloadMenu');
       const show = !legacyVideo && onVideoPage;
       vBtn.style.display = show ? '' : 'none';
       if (show) anyVisible = true;
@@ -2079,12 +2079,30 @@
   }
 
   // ============================================================================
-  // Video Download Button & Modal
+  // Download Menu & Video Modal
   // ============================================================================
 
-  function injectVideoDownloadButton() {
+  // Download menu item icons, 16x16 strokes
+  const MENU_ICONS = {
+    video: '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="4" width="9" height="8" rx="1.5"/><path d="m10.5 7 4-2.5v7l-4-2.5"/></svg>',
+    audio: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 12V3.5l7.5-1.5V11"/><circle cx="4.25" cy="12" r="1.75"/><circle cx="11.75" cy="11" r="1.75"/></svg>',
+    transcript: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h11M2.5 7.5h11M2.5 11h7"/></svg>'
+  };
+  const CHEVRON_SVG = '<svg viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5 5 6.5 8 3.5"/></svg>';
+
+  // Video items open the video modal on that format; Transcript opens the transcript modal
+  const DOWNLOAD_MENU_ITEMS = [
+    { action: 'video-audio', label: 'Video + audio', hint: '.mp4', icon: 'video' },
+    { action: 'audio-m4a', label: 'Audio only', hint: '.m4a', icon: 'audio' },
+    { action: 'video-only', label: 'Video only', hint: '.mp4', icon: 'video' },
+    { action: 'transcript', label: 'Transcript\u2026', hint: '.txt / .vtt / .json', icon: 'transcript', separatorBefore: true }
+  ];
+
+  // One "Download" command in the top command bar (alongside Upload,
+  // Favorite, etc.) that opens a menu of formats
+  function injectDownloadMenu() {
     // Check if already injected
-    if (document.querySelector('#customDownloadVideo')) return true;
+    if (document.querySelector('#customDownloadMenu')) return true;
 
     // The `.ms-CommandBar-primaryCommand` selector below also matches the
     // command bar on SharePoint site landing pages and document libraries
@@ -2096,8 +2114,6 @@
     // resolves (or its 30s timeout fires).
     if (!isLikelyVideoPage()) return true;
 
-    // Place in the top command bar (alongside Upload, Favorites, etc.)
-    // rather than inside the transcript panel
     const commandBar = document.querySelector('.ms-CommandBar-primaryCommand');
     if (!commandBar) {
       return false;
@@ -2107,130 +2123,151 @@
     const templateItem = commandBar.querySelector('.ms-OverflowSet-item');
     if (!templateItem) return false;
 
-    // Inject video button styles
-    if (!document.querySelector('#video-download-styles')) {
-      const style = document.createElement('style');
-      style.id = 'video-download-styles';
-      style.textContent = `
-        #customDownloadVideo {
-          background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%) !important;
-          color: white !important;
-          border: none !important;
-          transition: background 0.3s ease !important;
-          cursor: pointer !important;
-          padding: 0 8px !important;
-          height: 32px !important;
-          border-radius: 4px !important;
-          font-size: 13px !important;
-          font-weight: 600 !important;
-          display: flex !important;
-          align-items: center !important;
-          gap: 6px !important;
-        }
-
-        #customDownloadVideo:hover {
-          background: linear-gradient(135deg, #c0392b 0%, #e74c3c 100%) !important;
-        }
-
-        #customDownloadVideo:active {
-          box-shadow: 0 2px 4px rgba(231, 76, 60, 0.4) !important;
-        }
-      `;
-      document.head.appendChild(style);
-    }
-
     // Create a new OverflowSet-item container
     const newContainer = document.createElement('div');
     newContainer.className = templateItem.className; // ms-OverflowSet-item item-XX
     newContainer.setAttribute('role', 'none');
 
+    // Borrow the classes of a native command button with a text label, so the
+    // menu button gets SharePoint's own font, colour, height and hover in both
+    // light and dark mode. State classes (is-checked, is-disabled) are dropped.
+    const labelled = commandBar.querySelector('.ms-OverflowSet-item button .ms-Button-label');
+    const nativeButton = (labelled && labelled.closest('button')) || templateItem.querySelector('button');
+
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.id = 'customDownloadVideo';
+    btn.id = 'customDownloadMenu';
+    btn.className = nativeButton
+      ? nativeButton.className.split(/\s+/).filter(c => c && !/^is-/.test(c)).join(' ')
+      : 'ttd-cmd-fallback';
     btn.setAttribute('role', 'menuitem');
-    btn.setAttribute('aria-label', 'Download Video');
+    btn.setAttribute('aria-haspopup', 'menu');
+    btn.setAttribute('aria-expanded', 'false');
     btn.setAttribute('data-is-focusable', 'true');
-    // Match the floating widget's affordance — arrow-into-tray icon then label.
-    btn.innerHTML = `
-      <span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:4px;background:rgba(255,255,255,0.22);margin-right:6px;vertical-align:middle;">
-        <span style="display:inline-block;width:12px;height:12px;line-height:0;">${DL_SVG.replace('<svg', '<svg style="display:block;width:12px;height:12px;fill:#fff;"')}</span>
-      </span>
-      <span style="vertical-align:middle;">Download Video</span>
-    `;
-    btn.addEventListener('click', handleVideoDownloadClick);
+    btn.innerHTML = `<span class="ttd-cmd-icon">${DL_SVG}</span><span>Download</span><span class="ttd-cmd-chevron">${CHEVRON_SVG}</span>`;
+    btn.addEventListener('click', toggleDownloadMenu);
+    btn.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        openDownloadMenu(true);
+      }
+    });
 
     newContainer.appendChild(btn);
     commandBar.appendChild(newContainer);
 
-    console.debug('[Transcript Downloader] Video download button injected into command bar');
+    // Light text means a dark command bar. The menu follows the page's theme
+    // rather than the OS one, since SharePoint has its own dark mode.
+    btn.setAttribute('data-ttd-theme', isLightColor(getComputedStyle(btn).color) ? 'dark' : 'light');
 
-    // Also drop the transcript button into the command bar right next to the
-    // video button so both live inline together (instead of leaving the
-    // transcript button stranded in the floating widget overlay).
-    injectTranscriptIntoCommandBar(commandBar, templateItem);
-
+    console.debug('[Transcript Downloader] Download menu injected into command bar');
     return true;
   }
 
-  // Sibling injection: places a "Download Transcript" button into the same
-  // command-bar OverflowSet right after the video button. Bails if a legacy
-  // transcript button (#customDownloadTranscript) already exists from the
-  // older `injectDownloadButton()` path that targets `#downloadTranscript`.
-  function injectTranscriptIntoCommandBar(commandBar, templateItem) {
-    if (document.querySelector('#customDownloadTranscript')) return false;
-    if (!commandBar || !templateItem) return false;
+  function isLightColor(cssColor) {
+    const m = String(cssColor).match(/\d+(\.\d+)?/g);
+    if (!m || m.length < 3) return false;
+    return (0.299 * m[0] + 0.587 * m[1] + 0.114 * m[2]) / 255 > 0.5;
+  }
 
-    if (!document.querySelector('#transcript-cmdbar-styles')) {
-      const style = document.createElement('style');
-      style.id = 'transcript-cmdbar-styles';
-      style.textContent = `
-        #customDownloadTranscript {
-          background: linear-gradient(135deg, #5b67e0 0%, #6a4ba0 100%) !important;
-          color: white !important;
-          border: none !important;
-          transition: background 0.3s ease !important;
-          cursor: pointer !important;
-          padding: 0 8px !important;
-          height: 32px !important;
-          border-radius: 4px !important;
-          font-size: 13px !important;
-          font-weight: 600 !important;
-          margin: 0 4px !important;
-          display: inline-flex !important;
-          align-items: center !important;
-        }
-        #customDownloadTranscript:hover {
-          background: linear-gradient(135deg, #6a4ba0 0%, #5b67e0 100%) !important;
-        }
-      `;
-      document.head.appendChild(style);
+  // The menu lives on <body> so the command bar's overflow can't clip it
+  let downloadMenu = null;
+
+  function buildDownloadMenu() {
+    const menu = document.createElement('div');
+    menu.id = 'ttdDownloadMenu';
+    menu.setAttribute('role', 'menu');
+    menu.setAttribute('aria-labelledby', 'customDownloadMenu');
+    menu.hidden = true;
+    menu.innerHTML = DOWNLOAD_MENU_ITEMS.map(item => `
+      ${item.separatorBefore ? '<div class="ttd-menu-separator" role="separator"></div>' : ''}
+      <button type="button" role="menuitem" class="ttd-menu-item" data-action="${item.action}">
+        <span class="ttd-menu-icon">${MENU_ICONS[item.icon]}</span>
+        <span>${item.label}</span>
+        <span class="ttd-menu-hint">${item.hint}</span>
+      </button>
+    `).join('');
+
+    menu.addEventListener('click', (e) => {
+      const item = e.target.closest('.ttd-menu-item');
+      if (!item) return;
+      closeDownloadMenu();
+      const action = item.getAttribute('data-action');
+      if (action === 'transcript') handleDownloadClick(e);
+      else handleVideoDownloadClick(e, action);
+    });
+    menu.addEventListener('keydown', onDownloadMenuKeydown);
+
+    document.body.appendChild(menu);
+    return menu;
+  }
+
+  function toggleDownloadMenu(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (downloadMenu && !downloadMenu.hidden) {
+      closeDownloadMenu();
+      return;
     }
-
-    const newContainer = document.createElement('div');
-    newContainer.className = templateItem.className;
-    newContainer.setAttribute('role', 'none');
-
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.id = 'customDownloadTranscript';
-    btn.setAttribute('role', 'menuitem');
-    btn.setAttribute('aria-label', 'Download Transcript');
-    btn.setAttribute('data-is-focusable', 'true');
-    btn.innerHTML = `
-      <span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:4px;background:rgba(255,255,255,0.22);margin-right:6px;vertical-align:middle;">
-        <span style="display:inline-block;width:12px;height:12px;line-height:0;">${DL_SVG.replace('<svg', '<svg style="display:block;width:12px;height:12px;fill:#fff;"')}</span>
-      </span>
-      <span style="vertical-align:middle;">Download Transcript</span>
-    `;
-    btn.addEventListener('click', handleDownloadClick);
-
-    newContainer.appendChild(btn);
-    commandBar.appendChild(newContainer);
-    console.debug('[Transcript Downloader] Transcript button injected into command bar');
-    return true;
+    // detail is 0 when Enter or Space "clicked" the button
+    openDownloadMenu(event.detail === 0);
   }
 
-  function handleVideoDownloadClick(event) {
+  function openDownloadMenu(focusFirstItem) {
+    const btn = document.getElementById('customDownloadMenu');
+    if (!btn) return;
+    if (!downloadMenu || !document.body.contains(downloadMenu)) downloadMenu = buildDownloadMenu();
+
+    const rect = btn.getBoundingClientRect();
+    downloadMenu.setAttribute('data-ttd-theme', btn.getAttribute('data-ttd-theme') || 'light');
+    downloadMenu.style.left = Math.round(rect.left) + 'px';
+    downloadMenu.style.top = Math.round(rect.bottom + 4) + 'px';
+    downloadMenu.hidden = false;
+    btn.setAttribute('aria-expanded', 'true');
+    if (focusFirstItem) downloadMenu.querySelector('.ttd-menu-item').focus();
+
+    document.addEventListener('mousedown', onPointerOutsideDownloadMenu, true);
+    window.addEventListener('resize', closeDownloadMenu);
+    window.addEventListener('scroll', closeDownloadMenu);
+  }
+
+  function closeDownloadMenu() {
+    if (!downloadMenu || downloadMenu.hidden) return;
+    downloadMenu.hidden = true;
+    const btn = document.getElementById('customDownloadMenu');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+    document.removeEventListener('mousedown', onPointerOutsideDownloadMenu, true);
+    window.removeEventListener('resize', closeDownloadMenu);
+    window.removeEventListener('scroll', closeDownloadMenu);
+  }
+
+  function onPointerOutsideDownloadMenu(e) {
+    if (downloadMenu.contains(e.target) || e.target.closest('#customDownloadMenu')) return;
+    closeDownloadMenu();
+  }
+
+  // Up/Down/Home/End move between items, Escape closes and returns focus to the button
+  function onDownloadMenuKeydown(e) {
+    const items = [...downloadMenu.querySelectorAll('.ttd-menu-item')];
+    const i = items.indexOf(document.activeElement);
+    if (e.key === 'ArrowDown') items[(i + 1) % items.length].focus();
+    else if (e.key === 'ArrowUp') items[(i - 1 + items.length) % items.length].focus();
+    else if (e.key === 'Home') items[0].focus();
+    else if (e.key === 'End') items[items.length - 1].focus();
+    else if (e.key === 'Escape') {
+      closeDownloadMenu();
+      document.getElementById('customDownloadMenu')?.focus();
+    } else if (e.key === 'Tab') {
+      closeDownloadMenu();
+      return;
+    } else {
+      return;
+    }
+    e.preventDefault();
+  }
+
+  // `format` preselects a card when the click came from a Download menu item
+  function handleVideoDownloadClick(event, format) {
     event.preventDefault();
     event.stopPropagation();
 
@@ -2248,7 +2285,7 @@
         console.warn('[Transcript Downloader] Transcode session captured but decryption key not yet available; re-requested from page');
         return;
       }
-      showVideoModal();
+      showVideoModal(format);
       return;
     }
 
@@ -2258,7 +2295,7 @@
       return;
     }
 
-    showVideoModal();
+    showVideoModal(format);
   }
 
   function getVideoFilename() {
@@ -2529,13 +2566,15 @@
     modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
   }
 
-  function showVideoModal() {
+  function showVideoModal(format) {
     // Remove existing modal so we get fresh closure state each time
     const existing = document.getElementById('videoDownloadModal');
     if (existing) existing.remove();
 
     createVideoModal();
-    document.getElementById('videoDownloadModal').classList.add('show');
+    const modal = document.getElementById('videoDownloadModal');
+    if (format) modal.querySelector(`.video-format-card[data-format="${format}"]`)?.click();
+    modal.classList.add('show');
   }
 
   // Monitor for transcript page and inject buttons
@@ -2578,7 +2617,7 @@
     startTranscodeCapture();
 
     let transcriptDone = injectDownloadButton();
-    let videoDone = injectVideoDownloadButton();
+    let videoDone = injectDownloadMenu();
     updateFloatingWidgetState();
 
     if (transcriptDone && videoDone) {
@@ -2590,7 +2629,7 @@
         if (!document.getElementById('ttdFloatingWidget')) injectFloatingWidget();
 
         if (!transcriptDone) transcriptDone = injectDownloadButton();
-        if (!videoDone) videoDone = injectVideoDownloadButton();
+        if (!videoDone) videoDone = injectDownloadMenu();
         updateFloatingWidgetState();
 
         if (transcriptDone && videoDone) {
