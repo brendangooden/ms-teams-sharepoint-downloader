@@ -248,35 +248,54 @@
     };
   }
 
+  // A track is usable once we've seen its init segment and one media segment.
+  function hasTranscodeTrack(session, name) {
+    const t = session && session.tracks[name];
+    return !!(t && t.initUrl && t.sampleSegmentUrl);
+  }
+
   // Poll Resource Timing until we recover the session, then light the button.
   // Also runs a PerformanceObserver so a session whose segments arrive later
   // (e.g. only once playback starts) is caught the moment they fire.
+  //
+  // The player requests audio and video in parallel, so the video track can be
+  // complete before the audio init segment has landed. Keep rebuilding the
+  // session until the audio track is in too. Stopping at the first video-only
+  // session made "Video + Audio" save an MP4 with no sound.
   function startTranscodeCapture() {
     if (window.__ttdTranscodeCaptureStarted) return;
     window.__ttdTranscodeCaptureStarted = true;
 
     let tries = 0;
     const MAX_TRIES = 40; // ~60s at 1.5s
+    let obs = null;
     const tick = () => {
-      if (transcodeSession) return true;
+      if (hasTranscodeTrack(transcodeSession, 'audio')) return true;
       if (!isLikelyVideoPage()) return false;
       const session = buildTranscodeSession(transcodeUrlsFromPerformance());
       if (session) {
+        if (!transcodeSession) console.log('[Transcript Downloader] Captured oneDrive.transcode session');
         transcodeSession = session;
-        console.log('[Transcript Downloader] Captured oneDrive.transcode session');
         try { updateFloatingWidgetState(); } catch (_) { /* button may not be injected yet */ }
-        return true;
+        if (hasTranscodeTrack(session, 'audio')) {
+          console.debug('[Transcript Downloader] oneDrive.transcode session now includes the audio track');
+          return true;
+        }
       }
       return false;
     };
 
     if (tick()) return;
     const iv = setInterval(() => {
-      if (tick() || ++tries >= MAX_TRIES) clearInterval(iv);
+      if (tick() || ++tries >= MAX_TRIES) {
+        clearInterval(iv);
+        // A recording with no audio track never completes, so stop observing too
+        if (obs) obs.disconnect();
+      }
     }, 1500);
 
     try {
-      const obs = new PerformanceObserver(() => { if (tick()) obs.disconnect(); });
+      obs = new PerformanceObserver(() => { if (tick()) obs.disconnect(); });
       obs.observe({ type: 'resource', buffered: true });
     } catch (_) { /* PerformanceObserver unsupported — interval still covers it */ }
   }
@@ -1646,6 +1665,10 @@
 
     if (format === 'video-audio') {
       if (!audioTrack || allTracks.length === 1) {
+        // Expected for a muxed manifest; otherwise the audio track was never captured
+        if (videoTrack && videoTrack.type !== 'muxed') {
+          console.warn('[Transcript Downloader] No audio track captured, saving the video track only');
+        }
         tracksToDownload = [videoTrack || allTracks[0]];
       } else {
         tracksToDownload = [videoTrack, audioTrack].filter(Boolean);
