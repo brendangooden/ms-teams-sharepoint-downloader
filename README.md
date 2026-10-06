@@ -24,13 +24,14 @@ Works on:
 ## Features
 
 ### Video / Audio download
+- **One Download menu** in the command bar, next to Record and Upload — Video + audio, Audio only, Video only, or Transcript.
 - **In-browser download** — Video+Audio (MP4), Audio Only (M4A), or Video Only. No extra tools needed.
 - **Parallel segment fetching** — tunable concurrency (1–16 segments at once) with automatic backoff if SharePoint throttles. Multi-threaded mux off the UI thread.
 - **Editable filename** — auto-derived from the page title.
 - **Floating banner widget** as a fallback for when the SharePoint command bar re-renders or hides the button.
 
 ### Transcript download
-- **Automatic detection** — the extension watches for the transcript metadata call and adds a Download Transcript button.
+- **Automatic detection** — the extension finds the transcript for **Download → Transcript…** (or the transcript-panel and floating-banner buttons), watching for the metadata call or fetching it itself.
 - **Three formats** — RAW JSON, standard WebVTT, or Grouped VTT (consecutive lines from the same speaker collapsed into a block).
 - **Live preview** of each format in the modal.
 - **Last-used format remembered** across sessions.
