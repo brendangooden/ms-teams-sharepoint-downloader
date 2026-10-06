@@ -539,7 +539,7 @@
     modal.innerHTML = `
       <div class="modal-content">
         <div class="modal-header">
-          <h2>Select Transcript Format</h2>
+          <h2>Download Transcript</h2>
           <button class="modal-close" id="modalClose">&times;</button>
         </div>
         
@@ -2297,7 +2297,6 @@
           Add subtitles from the transcript
           <span class="video-subtitles-hint" id="videoSubtitlesHint"></span>
         </label>
-        <button class="browser-dl-action-btn" id="browserDlActionBtn" disabled>Select a format above</button>
         <div class="browser-download-section" id="browserDownloadSection" style="display: none; margin-top: 12px;">
           <div class="browser-dl-progress-bar-wrap">
             <div class="browser-dl-progress-bar" id="browserDlProgressBar" style="width:0%"></div>
@@ -2319,6 +2318,7 @@
           </a>
           <div class="modal-actions-buttons">
             <button class="modal-button modal-button-cancel" id="videoModalCancel">Close</button>
+            <button class="modal-button modal-button-download video-download-btn" id="browserDlActionBtn" disabled>Download</button>
           </div>
         </div>
       </div>
@@ -2336,7 +2336,14 @@
     // --- Download logic ---
     const dlCards = modal.querySelectorAll('.video-format-card');
     const dlBtn = modal.querySelector('#browserDlActionBtn');
+    const closeBtn = modal.querySelector('#videoModalCancel');
     let selectedBrowserFormat = null;
+
+    // Names the format, like the transcript modal's "Download Grouped VTT"
+    function downloadLabel() {
+      const f = browserFormats.find(x => x.id === selectedBrowserFormat);
+      return f ? `Download ${f.title}` : 'Download';
+    }
 
     dlCards.forEach(card => {
       card.addEventListener('click', () => {
@@ -2344,7 +2351,7 @@
         card.classList.add('selected');
         selectedBrowserFormat = card.getAttribute('data-format');
         dlBtn.disabled = false;
-        dlBtn.textContent = '\u2193 Download';
+        dlBtn.textContent = downloadLabel();
         renderSubtitlesToggle();
       });
     });
@@ -2354,7 +2361,7 @@
       defaultCard.classList.add('selected');
       selectedBrowserFormat = 'video-audio';
       dlBtn.disabled = false;
-      dlBtn.textContent = '\u2193 Download';
+      dlBtn.textContent = downloadLabel();
     }
 
     // Subtitles go in as a track while muxing, so only Video + Audio can carry
@@ -2407,6 +2414,8 @@
       abortController = new AbortController();
       dlBtn.textContent = 'Cancel Download';
       dlBtn.classList.add('browser-dl-cancelling');
+      // One way to stop: Close would cancel the download too, so it steps aside
+      closeBtn.hidden = true;
       dlCards.forEach(c => { c.style.pointerEvents = 'none'; c.style.opacity = '0.6'; });
       subtitlesInput.disabled = true;
 
@@ -2477,8 +2486,9 @@
         }
       } finally {
         abortController = null;
-        dlBtn.textContent = '\u2193 Download';
+        dlBtn.textContent = downloadLabel();
         dlBtn.classList.remove('browser-dl-cancelling');
+        closeBtn.hidden = false;
         dlCards.forEach(c => { c.style.pointerEvents = ''; c.style.opacity = ''; });
         renderSubtitlesToggle();
       }
@@ -2491,7 +2501,7 @@
     }
 
     modal.querySelector('#videoModalClose').addEventListener('click', closeModal);
-    modal.querySelector('#videoModalCancel').addEventListener('click', closeModal);
+    closeBtn.addEventListener('click', closeModal);
     modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
   }
 
