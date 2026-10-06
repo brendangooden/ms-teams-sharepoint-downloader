@@ -21,3 +21,7 @@ Sourced from `demo-website/src/assets/screenshots/dark/*.png` (the full-resoluti
 ### Regenerating
 
 After updating any of the dark screenshots in `demo-website/src/assets/screenshots/dark/`, re-derive these via the section in `scripts/regen-screenshots.md` titled "Chrome Web Store variants" (the playbook is gitignored). The script is a self-contained `Format24bppRgb` resize — no DPI awareness, no MCP, no live page state needed.
+
+## Marketing images
+
+`marketing/` has an alternative set: the same UI framed with a headline in the demo site's look, plus the small and marquee promo tiles. See `marketing/README.md`.
