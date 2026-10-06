@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>MS Teams Video &amp; Transcript Downloader</title>
+  <!-- Theme tokens (light and dark) come from the same file as the in-page modals -->
+  <link rel="stylesheet" href="modal.css">
+  <style>
+    body {
+      width: 320px;
+      margin: 0;
+      padding: 16px;
+      background: var(--ttd-bg);
+      color: var(--ttd-text);
+      font: 13px/1.45 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding-bottom: 12px;
+      margin-bottom: 12px;
+      border-bottom: 2px solid var(--ttd-border);
+    }
+
+    header img {
+      width: 26px;
+      height: 26px;
+      border-radius: 6px;
+    }
+
+    h1 {
+      flex: 1;
+      margin: 0;
+      font-size: 15px;
+    }
+
+    #version {
+      font-size: 11px;
+      color: var(--ttd-text-dim);
+    }
+
+    p {
+      margin: 0 0 12px;
+      color: var(--ttd-text-muted);
+    }
+
+    p strong {
+      color: var(--ttd-text);
+    }
+
+    .sites {
+      margin: 0 0 12px;
+      padding: 10px 12px;
+      background: var(--ttd-bg-elevated);
+      border: 1px solid var(--ttd-border-strong);
+      border-radius: 8px;
+      font-size: 12px;
+      color: var(--ttd-text-muted);
+    }
+
+    .sites h2 {
+      margin: 0 0 4px;
+      font-size: 12px;
+      color: var(--ttd-text);
+    }
+
+    .sites ul {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      line-height: 1.7;
+    }
+
+    code {
+      font: 11px ui-monospace, Menlo, Consolas, monospace;
+      color: var(--ttd-text);
+    }
+
+    nav {
+      display: flex;
+      gap: 14px;
+      padding-top: 10px;
+      border-top: 1px solid var(--ttd-border);
+      font-size: 12px;
+    }
+
+    nav a {
+      color: var(--ttd-accent-text);
+      font-weight: 600;
+      text-decoration: none;
+    }
+
+    nav a:hover {
+      text-decoration: underline;
+    }
+
+    nav a.report {
+      margin-left: auto;
+      color: var(--ttd-text-dim);
+      font-weight: 400;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <img src="icons/icon128.png" alt="">
+    <h1>Teams Downloader</h1>
+    <span id="version"></span>
+  </header>
+
+  <p>Open a meeting recording or video in Teams, SharePoint or OneDrive, then use <strong>Download</strong> above the video.</p>
+
+  <div class="sites">
+    <h2>Works on</h2>
+    <ul>
+      <li><code>teams.microsoft.com</code></li>
+      <li><code>teams.cloud.microsoft</code></li>
+      <li><code>*.sharepoint.com</code> (Stream player, OneDrive)</li>
+    </ul>
+  </div>
+
+  <nav>
+    <a href="https://teamsvideotranscriptexporter.com" target="_blank" rel="noopener noreferrer">Website</a>
+    <a href="https://github.com/brendangooden/ms-teams-sharepoint-downloader" target="_blank" rel="noopener noreferrer">GitHub &#9733;</a>
+    <a class="report" href="https://github.com/brendangooden/ms-teams-sharepoint-downloader/issues/new?template=bug_report.yml" target="_blank" rel="noopener noreferrer">Report a bug</a>
+  </nav>
+
+  <script src="popup.js"></script>
+</body>
+</html>

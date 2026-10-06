@@ -48,7 +48,8 @@
   "action": {
     "default_icon": {
       "128": "icons/icon128.png"
-    }
+    },
+    "default_popup": "popup.html"
   },
   "icons": {
     "128": "icons/icon128.png"
