@@ -189,6 +189,63 @@
   flex-grow: 1;
 }
 
+/* Per-format option switch, e.g. "Timestamps" on Grouped VTT.
+   Sits right above the preview so the effect of toggling it is visible at once. */
+.format-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-start;
+  margin: 0 0 12px 0;
+  font-size: 13px;
+  color: var(--ttd-text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.format-toggle input {
+  appearance: none;
+  position: relative;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 16px;
+  margin: 0;
+  border-radius: 8px;
+  background: var(--ttd-border-strong);
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.format-toggle input::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  transition: transform 0.2s ease;
+}
+
+.format-toggle input:checked {
+  background: var(--ttd-accent);
+}
+
+.format-toggle input:checked::after {
+  transform: translateX(12px);
+}
+
+.format-toggle input:focus-visible {
+  outline: 2px solid var(--ttd-accent);
+  outline-offset: 2px;
+}
+
+.format-toggle:has(input:checked) {
+  color: var(--ttd-text);
+}
+
 .format-sample {
   background: var(--ttd-bg-sample);
   border-radius: 4px;
