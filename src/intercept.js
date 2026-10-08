@@ -136,6 +136,12 @@
   }
 
   function tryPostManifest() {
+    // Never shadow a transcode session: on new-format recordings, g_fileInfo['.transformUrl']
+    // is a thumbnail URL rather than a video manifest.
+    if (window.g_streamBootstrapContent && window.g_streamBootstrapContent.dashConfig) {
+      return false;
+    }
+
     const manifestUrl = extractManifestFromFileInfo();
     if (!manifestUrl) return false;
     // g_fileInfo carries the legacy tempauth-signed URL that the .svc.ms CDN

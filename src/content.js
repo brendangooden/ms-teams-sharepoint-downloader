@@ -936,6 +936,24 @@
     });
   }
 
+  // Resolve once we have a video manifest URL or transcode session, or after `timeoutMs`.
+  // Re-requests the context (covers the load-order race) then polls the
+  // module-scoped state the message handler populates.
+  function waitForVideoManifest(timeoutMs) {
+    return new Promise((resolve) => {
+      const isReady = () => !!(videoManifestUrl || transcodeSession);
+      if (isReady()) { resolve(true); return; }
+      requestTranscriptContext();
+      const start = Date.now();
+      const iv = setInterval(() => {
+        if (isReady() || Date.now() - start > timeoutMs) {
+          clearInterval(iv);
+          resolve(isReady());
+        }
+      }, 100);
+    });
+  }
+
   // Fetch transcript metadata directly from /_api/v2.1/.../media/transcripts.
   // SharePoint Stream only fires this request when the user opens the Transcript
   // panel, so if the user clicks our Download button before doing so we have to
@@ -2267,11 +2285,17 @@
   }
 
   // `format` preselects a card when the click came from a Download menu item
-  function handleVideoDownloadClick(event, format) {
+  async function handleVideoDownloadClick(event, format) {
     event.preventDefault();
     event.stopPropagation();
 
     console.log('[Transcript Downloader] Video download button clicked');
+
+    // If neither the manifest URL nor the transcode session has been captured yet,
+    // ask the MAIN world to re-send context and wait briefly to resolve load-order races.
+    if (!videoManifestUrl && !transcodeSession) {
+      await waitForVideoManifest(1500);
+    }
 
     // oneDrive.transcode format (issue #22): downloadable once both the session
     // template AND the AES key are captured. If the key isn't in yet, ask the
