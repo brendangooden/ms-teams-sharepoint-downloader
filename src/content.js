@@ -409,11 +409,19 @@
     return div.innerHTML;
   }
 
-  // Replacing everything outside [A-Za-z0-9 _-] neutralises path separators
-  // (`/ \ :`), the Windows-illegal set (`* ? " < > |`), and leading/trailing dots.
-  // Safe to apply multiple times. Both on blur and at download time.
+  // Neutralises path separators (`/ \ :`), the Windows-illegal set
+  // (`* ? " < > |`), control characters and leading/trailing dots — but keeps
+  // every Unicode letter, number and combining mark, so non-Latin titles (CJK,
+  // Japanese kana, Korean Hangul, Cyrillic, Greek, accented Latin, …) survive
+  // verbatim. The old ASCII-only `[^a-z0-9\s_-]` collapsed each such character
+  // to `_`, so a title like "产品评审会" landed on disk as "_____".
+  // `\p{M}` keeps decomposed accents/dakuten attached; NFC then composes them
+  // into a single code point. Safe to apply multiple times (idempotent).
   function sanitizeFilename(name) {
-    return String(name == null ? '' : name).replace(/[^a-z0-9\s_-]/gi, '_').trim();
+    return String(name == null ? '' : name)
+      .normalize('NFC')
+      .replace(/[^\p{L}\p{N}\p{M}\s_-]/gu, '_')
+      .trim();
   }
 
   // Best available base name for pre-filling the download filename fields.
