@@ -262,8 +262,10 @@ function mux(videoUint8, audioUint8, onProgress, subtitles) {
   // and Chrome plays all of them, so the audio would run ahead of video that
   // waits out the gap.
   // Each gap is measured from where the samples so far end, so an overlap
-  // with the previous fragment is taken out of the next gap. Fragments
-  // without samples are skipped.
+  // with the previous fragment is taken out of the next gap. After a gap,
+  // timing continues from the next fragment's tfdt, so the part of a gap
+  // that is left out is not made up in later fragments. Fragments without
+  // samples are skipped.
   function trackSamples(frags) {
     const parts = frags
       .map(f => ({ samples: parseTrafSamples(f.traf), base: readTfdt(f.traf) }))
@@ -277,9 +279,8 @@ function mux(videoUint8, audioUint8, onProgress, subtitles) {
       if (next !== null && next > end) {
         const last = samples[samples.length - 1];
         const longest = samples.reduce((m, s) => Math.max(m, s.duration), 0);
-        const add = Math.min(next - end, longest - last.duration);
-        last.duration += add;
-        end += add;
+        last.duration += Math.min(next - end, longest - last.duration);
+        end = next;
       }
     }
     return parts.flatMap(p => p.samples);
