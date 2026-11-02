@@ -233,11 +233,46 @@ function mux(videoUint8, audioUint8, onProgress, subtitles) {
     return samples;
   }
 
+  // The traf's base media decode time (tfdt), or null when it has none.
+  function readTfdt(trafBytes) {
+    let pos = 8;
+    while (pos + 8 <= trafBytes.length) {
+      const sz = readU32(trafBytes, pos);
+      if (sz < 8) break;
+      if (btype(trafBytes, pos + 4) === 'tfdt') {
+        return trafBytes[pos + 8] === 1
+          ? readU32(trafBytes, pos + 12) * 0x100000000 + readU32(trafBytes, pos + 16)
+          : readU32(trafBytes, pos + 12);
+      }
+      pos += sz;
+    }
+    return null;
+  }
+
+  // The flat MP4 times each sample by its duration alone, so every fragment
+  // has to end where the next one starts. Stream's transcoder ends each
+  // fragment with a sample cut short and still starts the next fragment at its
+  // tfdt; summing durations dropped that gap at every 5 s segment boundary,
+  // and an hour-long video track came out about 26 s shorter than its audio.
+  // Stretch the last sample of each fragment to the next fragment's tfdt. An
+  // overlap cannot be expressed as a duration and is left as it is.
+  function trackSamples(frags) {
+    const parts = frags.map(f => ({ samples: parseTrafSamples(f.traf), base: readTfdt(f.traf) }));
+    for (let i = 0; i + 1 < parts.length; i++) {
+      const { samples, base } = parts[i];
+      const next = parts[i + 1].base;
+      if (base === null || next === null || !samples.length) continue;
+      const end = samples.reduce((t, s) => t + s.duration, base);
+      if (next > end) samples[samples.length - 1].duration += next - end;
+    }
+    return parts.flatMap(p => p.samples);
+  }
+
   const vFrags = collectFragments(videoUint8);
   const aFrags = collectFragments(audioUint8);
 
-  const vSamples = vFrags.flatMap(f => parseTrafSamples(f.traf));
-  const aSamples = aFrags.flatMap(f => parseTrafSamples(f.traf));
+  const vSamples = trackSamples(vFrags);
+  const aSamples = trackSamples(aFrags);
 
   const vData = cat(...vFrags.map(f => f.mdatPayload));
   const aData = cat(...aFrags.map(f => f.mdatPayload));
