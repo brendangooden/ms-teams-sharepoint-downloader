@@ -18,6 +18,7 @@ Works on:
 - `teams.microsoft.com` and `teams.cloud.microsoft` (Teams web client)
 - `*.sharepoint.com` meeting-recording links
 - `*.sharepoint.com/.../_layouts/15/stream.aspx` — the Stream-on-SharePoint player (any MP4 someone uploaded to SharePoint or OneDrive and shared)
+- Other sites you enable from the toolbar popup, such as SharePoint or OneDrive served from your organisation's own domain (see [Other sites](#other-sites))
 
 > **About Microsoft Stream:** Microsoft retired the standalone *Stream (Classic)* product at `web.microsoftstream.com` in early 2024. The current *Stream (on SharePoint)* product reuses the same player whenever an MP4 lives on SharePoint or OneDrive, so this extension covers it automatically.
 
@@ -86,6 +87,16 @@ Not sure where to start? Click the extension's toolbar icon for a short how-to a
 
 Your last-used format is remembered as the default.
 
+### Other sites
+
+The extension runs on the sites listed at the top of this page without asking. If your organisation serves SharePoint or OneDrive from its own domain (for example `https://intranet.example.com/sites/...`), enable it there once:
+
+1. Open the video on that site.
+2. Click the extension's toolbar icon, then **Enable on _that site_**.
+3. Chrome asks to let the extension read and change data on that one site. Click **Allow**. The page reloads and the Download menu appears.
+
+To turn it off again, click the toolbar icon on that site and choose **Disable on this site**, or remove the site under the extension's **Site access** in `chrome://extensions/`.
+
 ## File structure
 
 ```
@@ -93,23 +104,27 @@ src/
 ├── manifest.json   # MV3 — intercept.js runs MAIN/document_start, content.js runs ISOLATED/document_idle
 ├── intercept.js    # fetch() interceptor — captures transcript + video manifest URLs and auth tokens
 ├── content.js      # UI, transcript flow, video download, modals, floating widget
+├── background.js   # Registers intercept.js and content.js on the sites enabled from the popup
 ├── modal.css       # Styles (the popup reuses its theme tokens)
-├── popup.html      # Toolbar popup: how-to, supported sites, links
-├── popup.js        # Fills in the popup's version from the manifest
+├── popup.html      # Toolbar popup: how-to, supported sites, links, enable on the current site
+├── popup.js        # Fills in the popup's version; enables or disables the current site
 └── icons/
 ```
 
 ## Permissions
 
 - `storage` — remember the user's last-used transcript format.
+- `activeTab` — when you click the toolbar icon, the popup reads the current tab's address to offer **Enable on _that site_**.
+- `scripting` — registers the content scripts on the sites you enable.
 - Host permissions on `teams.microsoft.com`, `teams.cloud.microsoft`, and `*.sharepoint.com`.
+- Optional access to other `https://` sites, requested for one site at a time when you click **Enable on _that site_**. Nothing beyond the sites above is granted until you allow it.
 
 ## Troubleshooting
 
 ### Buttons don't appear
 1. Refresh the page after installing.
 2. Open DevTools (F12) → Console and look for `[Transcript Downloader]` messages.
-3. Verify the URL is on `teams.microsoft.com`, `teams.cloud.microsoft`, or `*.sharepoint.com`.
+3. Verify the URL is on `teams.microsoft.com`, `teams.cloud.microsoft`, or `*.sharepoint.com`, or that you enabled the site from the toolbar popup (see [Other sites](#other-sites)).
 4. Wait a few seconds — the transcript metadata call may not have fired yet.
 
 ### Download fails

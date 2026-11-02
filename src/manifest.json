@@ -7,7 +7,9 @@
   "author": "Brendan Gooden",
   "homepage_url": "https://github.com/brendangooden/ms-teams-sharepoint-downloader",
   "permissions": [
-    "storage"
+    "storage",
+    "activeTab",
+    "scripting"
   ],
   "host_permissions": [
     "https://*.sharepoint.com/*",
@@ -17,6 +19,12 @@
     "https://teams.cloud.microsoft/*",
     "https://teams.microsoft.com.mcas.ms/*"
   ],
+  "optional_host_permissions": [
+    "https://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
   "content_scripts": [
     {
       "matches": [
@@ -56,7 +64,7 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["intercept.js", "mux-worker.js"],
+      "resources": ["intercept.js"],
       "matches": [
         "https://*.sharepoint.com/*",
         "https://*.sharepoint.com.mcas.ms/*",
@@ -64,6 +72,11 @@
         "https://teams.cloud.microsoft/*",
         "https://teams.microsoft.com.mcas.ms/*"
       ]
+    },
+    {
+      "resources": ["mux-worker.js"],
+      "matches": ["https://*/*"],
+      "use_dynamic_url": true
     }
   ]
 }

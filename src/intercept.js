@@ -31,6 +31,17 @@
   function extractSpopActoken(args) { return extractHeader(args, 'x-spopactoken'); }
   function extractAuthorization(args) { return extractHeader(args, 'authorization'); }
 
+  // True for a URL on this page's own origin, relative URLs included. On a
+  // SharePoint tenant served from a custom domain the player calls the API
+  // there rather than on *.sharepoint.com.
+  function isSameOriginUrl(url) {
+    try {
+      return new URL(url, window.location.href).origin === window.location.origin;
+    } catch (_) {
+      return false;
+    }
+  }
+
   window.fetch = async function(...args) {
     const response = await originalFetch.apply(this, args);
     const url = args[0];
@@ -42,7 +53,7 @@
     // "Anonymous or Email authenticated Guest User may not request tokens".
     if (url && typeof url === 'string' &&
         /\/_api\/v[0-9.]+\//.test(url) &&
-        url.includes('sharepoint.com')) {
+        (url.includes('sharepoint.com') || isSameOriginUrl(url))) {
       const auth = extractAuthorization(args);
       if (auth && /^Bearer\s+/i.test(auth)) {
         window.postMessage({ type: 'SP_API_BEARER', authorization: auth }, '*');
