@@ -233,14 +233,107 @@ function mux(videoUint8, audioUint8, onProgress, subtitles) {
     return samples;
   }
 
+  // The traf's base media decode time (tfdt), or null when it has none.
+  function readTfdt(trafBytes) {
+    let pos = 8;
+    while (pos + 8 <= trafBytes.length) {
+      const sz = readU32(trafBytes, pos);
+      if (sz < 8) break;
+      if (btype(trafBytes, pos + 4) === 'tfdt') {
+        return trafBytes[pos + 8] === 1
+          ? readU32(trafBytes, pos + 12) * 0x100000000 + readU32(trafBytes, pos + 16)
+          : readU32(trafBytes, pos + 12);
+      }
+      pos += sz;
+    }
+    return null;
+  }
+
+  // The flat MP4 times each sample by its duration alone, so every fragment
+  // has to end where the next one starts. Stream's transcoder ends each
+  // fragment with a sample cut short and still starts the next fragment at its
+  // tfdt; summing durations dropped that gap at every 5 s segment boundary,
+  // and an hour-long video track came out about 26 s shorter than its audio.
+  // Lengthen the last sample of each fragment toward the next fragment's
+  // tfdt, but not beyond the longest sample in that fragment: that restores
+  // what the transcoder cut off. A longer gap is a real discontinuity and is
+  // left out of the timeline, because a duration cannot represent it for
+  // audio: an AAC frame decodes to 1024 samples whatever its duration says,
+  // and Chrome plays all of them, so the audio would run ahead of video that
+  // waits out the gap.
+  // Each gap is measured from where the samples so far end, so an overlap
+  // with the previous fragment is taken out of the next gap. After a gap,
+  // timing continues from the next fragment's tfdt, so the part of a gap
+  // that is left out is not made up in later fragments. Fragments without
+  // samples are skipped.
+  function trackSamples(frags) {
+    const parts = frags
+      .map(f => ({ samples: parseTrafSamples(f.traf), base: readTfdt(f.traf) }))
+      .filter(p => p.samples.length);
+    let end = null; // where the samples so far end, on the tfdt timeline
+    for (let i = 0; i + 1 < parts.length; i++) {
+      const { samples, base } = parts[i];
+      const next = parts[i + 1].base;
+      if (base === null) { end = null; continue; }
+      end = samples.reduce((t, s) => t + s.duration, end === null ? base : end);
+      if (next !== null && next > end) {
+        const last = samples[samples.length - 1];
+        const longest = samples.reduce((m, s) => Math.max(m, s.duration), 0);
+        last.duration += Math.min(next - end, longest - last.duration);
+        end = next;
+      }
+    }
+    return parts.flatMap(p => p.samples);
+  }
+
+  // About two in three of Stream's 5 s audio segments start with an extra,
+  // near-silent AAC frame. The segment's durations squeeze it in: that frame
+  // or the segment's last frame gets a single tick and the other 1023, so the
+  // segment still spans 216 frames. Every frame still decodes to 1024
+  // samples, and Chrome plays all of them, so the sound fell 23 ms further
+  // behind the picture at each such segment, about 10 s an hour. Drop frames
+  // from the start of a fragment when it holds more than fit between where the
+  // audio so far ends and the fragment's own end (the track's last frame,
+  // which may be cut short, counts as whole), then give every frame but the
+  // track's last the frame length, so the timeline matches what decoders
+  // output. As for video, a gap in the tfdt timeline is left out.
+  function audioTrack(frags) {
+    const parts = frags
+      .map(f => ({ samples: parseTrafSamples(f.traf), base: readTfdt(f.traf), payload: f.mdatPayload }))
+      .filter(p => p.samples.length);
+    const counts = new Map();
+    for (const p of parts) {
+      for (const s of p.samples) counts.set(s.duration, (counts.get(s.duration) || 0) + 1);
+    }
+    let frame = 0, most = 0;
+    for (const [d, c] of counts) if (c > most) { frame = d; most = c; }
+    let pos = null; // where the audio decoded so far ends, on the tfdt timeline
+    parts.forEach((p, i) => {
+      let span = p.samples.reduce((t, s) => t + s.duration, 0);
+      if (i === parts.length - 1) span += frame - p.samples[p.samples.length - 1].duration;
+      const start = p.base !== null ? p.base : (pos !== null ? pos : 0);
+      if (pos === null || start - pos > frame / 2) pos = start;
+      // A sixteenth of a frame of slack keeps rounding from counting as a frame.
+      const needed = Math.ceil((start + span - pos) / frame - 1 / 16);
+      const extra = Math.min(p.samples.length - needed, p.samples.length - 1);
+      if (extra > 0) {
+        p.payload = p.payload.subarray(p.samples.slice(0, extra).reduce((t, s) => t + s.size, 0));
+        p.samples.splice(0, extra);
+      }
+      pos += p.samples.length * frame;
+    });
+    const samples = parts.flatMap(p => p.samples);
+    for (let i = 0; i + 1 < samples.length; i++) samples[i].duration = frame;
+    return { samples, data: cat(...parts.map(p => p.payload)) };
+  }
+
   const vFrags = collectFragments(videoUint8);
   const aFrags = collectFragments(audioUint8);
 
-  const vSamples = vFrags.flatMap(f => parseTrafSamples(f.traf));
-  const aSamples = aFrags.flatMap(f => parseTrafSamples(f.traf));
+  const vSamples = trackSamples(vFrags);
+  const { samples: aSamples, data: aData } = audioTrack(aFrags);
 
   const vData = cat(...vFrags.map(f => f.mdatPayload));
-  const aData = cat(...aFrags.map(f => f.mdatPayload));
 
   onProgress(0, 1, 'Building MP4...');
 
