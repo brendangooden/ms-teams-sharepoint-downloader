@@ -73,6 +73,25 @@
       line-height: 1.7;
     }
 
+    .this-site {
+      margin: 0 0 12px;
+      font-size: 12px;
+      color: var(--ttd-text-muted);
+    }
+
+    .this-site p {
+      margin: 0 0 8px;
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+
+    .this-site .modal-button {
+      width: 100%;
+      padding: 8px 12px;
+      font-size: 13px;
+      overflow-wrap: anywhere;
+    }
+
     code {
       font: 11px ui-monospace, Menlo, Consolas, monospace;
       color: var(--ttd-text);
@@ -120,6 +139,12 @@
       <li><code>*.sharepoint.com</code> (Stream player, OneDrive)</li>
     </ul>
   </div>
+
+  <!-- Filled in by popup.js when the current tab is on another https site -->
+  <section class="this-site" id="thisSite" hidden>
+    <p id="thisSiteText"></p>
+    <button type="button" class="modal-button" id="thisSiteButton"></button>
+  </section>
 
   <nav>
     <a href="https://teamsvideotranscriptexporter.com" target="_blank" rel="noopener noreferrer">Website</a>

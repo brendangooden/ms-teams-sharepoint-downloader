@@ -8,6 +8,7 @@ WHERE IT WORKS
 - teams.microsoft.com and teams.cloud.microsoft (Teams web client)
 - *.sharepoint.com meeting recordings
 - The Stream-on-SharePoint player, used for any MP4 stored on SharePoint or OneDrive
+- Other sites you enable from the toolbar popup, such as SharePoint or OneDrive on your organisation's own domain
 
 
 VIDEO AND AUDIO
@@ -52,7 +53,7 @@ PRIVACY
 - Video and transcript data stay in your browser. Nothing is sent to any third-party server.
 - No analytics or tracking.
 - Open source: https://github.com/brendangooden/ms-teams-sharepoint-downloader
-- Permissions: storage (default format) plus access to the Microsoft sites above.
+- Permissions: storage (default format) plus access to the Microsoft sites above. Access to any other site is requested only when you enable that site from the toolbar popup (activeTab and scripting are used for this).
 
 
 SUPPORT
