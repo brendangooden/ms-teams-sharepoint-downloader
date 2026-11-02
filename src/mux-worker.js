@@ -258,14 +258,17 @@ function mux(videoUint8, audioUint8, onProgress, subtitles) {
   // its tfdt. An overlap is left as it is, which places the next fragment
   // late; measuring each gap from where the samples so far end, rather than
   // from the fragment's own tfdt, lets the next gap bring the timeline back.
+  // Fragments without samples are skipped, so the next fragment with samples
+  // sets the boundary.
   function trackSamples(frags) {
-    const parts = frags.map(f => ({ samples: parseTrafSamples(f.traf), base: readTfdt(f.traf) }));
+    const parts = frags
+      .map(f => ({ samples: parseTrafSamples(f.traf), base: readTfdt(f.traf) }))
+      .filter(p => p.samples.length);
     let end = null; // where the samples so far end, on the tfdt timeline
     for (let i = 0; i + 1 < parts.length; i++) {
       const { samples, base } = parts[i];
       const next = parts[i + 1].base;
       if (base === null) { end = null; continue; }
-      if (!samples.length) continue;
       end = samples.reduce((t, s) => t + s.duration, end === null ? base : end);
       if (next !== null && next > end) {
         samples[samples.length - 1].duration += next - end;
