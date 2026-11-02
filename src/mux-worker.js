@@ -254,12 +254,16 @@ function mux(videoUint8, audioUint8, onProgress, subtitles) {
   // fragment with a sample cut short and still starts the next fragment at its
   // tfdt; summing durations dropped that gap at every 5 s segment boundary,
   // and an hour-long video track came out about 26 s shorter than its audio.
-  // Stretch the last sample of each fragment so the next fragment starts at
-  // its tfdt. An overlap is left as it is, which places the next fragment
-  // late; measuring each gap from where the samples so far end, rather than
-  // from the fragment's own tfdt, lets the next gap bring the timeline back.
-  // Fragments without samples are skipped, so the next fragment with samples
-  // sets the boundary.
+  // Lengthen the last sample of each fragment toward the next fragment's
+  // tfdt, but not beyond the longest sample in that fragment: that restores
+  // what the transcoder cut off. A longer gap is a real discontinuity and is
+  // left out of the timeline, because a duration cannot represent it for
+  // audio: an AAC frame decodes to 1024 samples whatever its duration says,
+  // and Chrome plays all of them, so the audio would run ahead of video that
+  // waits out the gap.
+  // Each gap is measured from where the samples so far end, so an overlap
+  // with the previous fragment is taken out of the next gap. Fragments
+  // without samples are skipped.
   function trackSamples(frags) {
     const parts = frags
       .map(f => ({ samples: parseTrafSamples(f.traf), base: readTfdt(f.traf) }))
@@ -271,8 +275,11 @@ function mux(videoUint8, audioUint8, onProgress, subtitles) {
       if (base === null) { end = null; continue; }
       end = samples.reduce((t, s) => t + s.duration, end === null ? base : end);
       if (next !== null && next > end) {
-        samples[samples.length - 1].duration += next - end;
-        end = next;
+        const last = samples[samples.length - 1];
+        const longest = samples.reduce((m, s) => Math.max(m, s.duration), 0);
+        const add = Math.min(next - end, longest - last.duration);
+        last.duration += add;
+        end += add;
       }
     }
     return parts.flatMap(p => p.samples);
